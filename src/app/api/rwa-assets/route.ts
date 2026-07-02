@@ -3,10 +3,10 @@
  * EVM chains (Ethereum, BNB Chain, Arbitrum, Base, Polygon, Avalanche).
  *
  * Source (free, no key needed):
- *   • CoinGecko public API — tokenized RWA categories (gold, treasuries,
- *     private credit, money-market funds, commodities, Ondo assets, ...)
- *     joined against CoinGecko's coins/list platform map to recover the
- *     on-chain contract address for each supported chain.
+ *   • CoinGecko public API — tokenized RWA categories (broad RWA bucket,
+ *     gold, treasuries, private credit) joined against CoinGecko's
+ *     coins/list platform map to recover the on-chain contract address
+ *     for each supported chain.
  *
  * Assets with no contract on any of our 6 supported chains are dropped —
  * this endpoint only surfaces tokens investors could actually hold here.
@@ -54,8 +54,6 @@ const RWA_CATEGORIES: Record<string, string> = {
   "tokenized-gold": "Tokenized Gold",
   "tokenized-treasuries": "Tokenized Treasuries",
   "tokenized-private-credit": "Tokenized Private Credit",
-  "tokenized-money-market-fund-mmfs": "Tokenized Money Market Funds",
-  "ondo-tokenized-assets": "Ondo Tokenized Assets",
 };
 
 // Maps CoinGecko's platform id -> one of our 6 supported EVM chains.
@@ -108,8 +106,27 @@ interface CgListCoin {
 export async function GET() {
   const errors: string[] = [];
 
-  // Fetched one at a time with spacing — CoinGecko's free anonymous tier
-  // returns 429s almost immediately when hit with parallel requests.
+  // Bulk platform/contract-address lookup goes first and alone — one call
+  // covers every coin CoinGecko tracks (far cheaper than N per-coin detail
+  // calls), it's cached for 6h since contract mappings barely change, and
+  // fetching it before the category loop means it isn't starved of time/
+  // rate-limit headroom by whatever comes before it.
+  const listData = await safeFetchJson<CgListCoin[]>(
+    "https://api.coingecko.com/api/v3/coins/list?include_platform=true",
+    21_600
+  );
+  if (!listData) errors.push("CoinGecko coins/list: unreachable (chain data unavailable)");
+
+  const platformsById = new Map<string, Record<string, string>>();
+  if (listData) {
+    for (const c of listData) {
+      if (c.platforms && Object.keys(c.platforms).length) platformsById.set(c.id, c.platforms);
+    }
+  }
+
+  // Categories fetched one at a time with spacing — CoinGecko's free
+  // anonymous tier returns 429s almost immediately on parallel requests.
+  await sleep(2_000);
   const categoryEntries = Object.entries(RWA_CATEGORIES);
   const byId = new Map<string, { coin: CgMarketCoin; categories: Set<string> }>();
 
@@ -128,7 +145,7 @@ export async function GET() {
         else byId.set(coin.id, { coin, categories: new Set([label]) });
       }
     }
-    if (i < categoryEntries.length - 1) await sleep(1_500);
+    if (i < categoryEntries.length - 1) await sleep(2_000);
   }
 
   if (byId.size === 0) {
@@ -139,22 +156,6 @@ export async function GET() {
       errors: [...errors, "No RWA market data available"],
     };
     return NextResponse.json(body);
-  }
-
-  // Bulk platform/contract-address lookup — one call covers every coin
-  // CoinGecko tracks, so it's far cheaper than N per-coin detail calls.
-  await sleep(1_500);
-  const listData = await safeFetchJson<CgListCoin[]>(
-    "https://api.coingecko.com/api/v3/coins/list?include_platform=true",
-    21_600 // 6h — contract mappings essentially never change
-  );
-  if (!listData) errors.push("CoinGecko coins/list: unreachable (chain data unavailable)");
-
-  const platformsById = new Map<string, Record<string, string>>();
-  if (listData) {
-    for (const c of listData) {
-      if (c.platforms && Object.keys(c.platforms).length) platformsById.set(c.id, c.platforms);
-    }
   }
 
   const result: RwaAsset[] = [];
