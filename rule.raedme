@@ -1,0 +1,177 @@
+# POLYCRUZ — Visual Design System & UI Specifications
+
+This document outlines the UI specifications, styles, components, colors, fonts, and layout rules for the **POLYCRUZ** Institutional Real-World Asset Tokenization platform. It serves as a guide for developers and designers to maintain a consistent premium, Apple-style, high-contrast, institutional aesthetic.
+
+---
+
+## 1. Core Visual Principles
+- **Institutional & Trustworthy**: Focuses on clean layouts, generous whitespaces, and precise alignment.
+- **Monochrome & High Contrast**: Built primarily on black (`#0a0a0a`) and white (`#ffffff`) surfaces, with neutral grays for structure.
+- **Subtle Semantics**: Bright colors (emerald, amber, red, blue) are used sparingly, only to convey statuses (success, warning, error, info) or trend directions.
+- **Smooth Micro-interactions**: Elegant transitions, radial glow overlays, and fade-up page animations to create a responsive and alive user interface.
+
+---
+
+## 2. Typography & Fonts
+
+### Font Family
+- **Primary Sans-Serif**: `Inter` (configured via Next.js Google Fonts subsetting, mapped to `--font-sans` or `--font-geist-sans`).
+- **Font Fallback Stack**: 
+  ```css
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  ```
+- **Font Rendering Options**:
+  - `font-feature-settings: "ss01", "cv11"` (enables clean design alternates for specific characters).
+  - `-webkit-font-smoothing: antialiased`
+  - `text-rendering: optimizeLegibility`
+- **Monospace Font**: Geist Mono (mapped to `--font-geist-mono` / `--font-mono` via Tailwind theme) used for blockchain addresses, transaction hashes, and financial code values (e.g., ISIN numbers).
+
+### Headings Hierarchy
+| Name | Target Class | Size Rule / Tailwind Value | Font Weight / Letter Spacing | Purpose |
+| :--- | :--- | :--- | :--- | :--- |
+| **Hero Display** | `.display-hero` | `clamp(3rem, 7vw, 6.5rem)` | Bold (700), `-0.04em` tracking, `0.95` line height | Large landing page headings |
+| **Extra Large** | `.display-xl` | `clamp(2.25rem, 4.5vw, 4rem)` | Bold (700), `-0.03em` tracking, `1` line height | Section headings on pages |
+| **Large Display** | `.display-lg` | `clamp(1.75rem, 3vw, 2.75rem)` | Semibold (600), `-0.025em` tracking, `1.05` line height | Dashboard banner headings |
+| **Eyebrow Header** | `.eyebrow` | `0.75rem` (`12px`) | Semibold (600), `0.12em` tracking, uppercase | Pre-header subtitles |
+
+### Standard Font Sizes
+- `10px` (`text-[10px]`): Sidebar uppercase category headers.
+- `11px` (`text-[11px]`): Status badge text, table header labels, small status pills (e.g., Network Status).
+- `12px` (`text-[12px]`): Label helper text, sub-labels, caption/footer text, chart ticks.
+- `13px` (`text-[13px]`): Sidebar navigation links, marketing nav links, buttons, inputs, table body values.
+- `14px` (`text-[14px]`): Standard description paragraphs, list elements, body text.
+- `15px` (`text-[15px]`): Sub-header titles, main page headers, sidebar brand label.
+- `17px` (`text-[17px]`): Main dashboard page title.
+- `18px` / `20px` (`text-lg` / `text-xl`): Marketing copy subtitles.
+
+---
+
+## 3. Color Palette
+
+### Custom CSS Variables (`:root`)
+| Variable | Value (Hex) | Purpose |
+| :--- | :--- | :--- |
+| `--background` | `#ffffff` | Primary app & landing page background |
+| `--surface` | `#fafafa` | Alternating backgrounds / light surface cards |
+| `--surface-elev` | `#f5f5f7` | Elevated surfaces, card highlights, sidebar hover backgrounds |
+| `--border` | `#e5e5ea` | Light gray borders for dividers, cards, and headers |
+| `--border-strong`| `#d2d2d7` | High contrast borders (e.g., secondary buttons) |
+| `--foreground` | `#0a0a0a` | Primary text and headings color |
+| `--foreground-muted` | `#6e6e73` | Secondary text, descriptions, and metadata |
+| `--foreground-subtle`| `#86868b` | Tertiary text, helper notes, and placeholder values |
+| `--accent` | `#000000` | Accent elements |
+| `--accent-foreground`| `#ffffff` | Accent text color |
+
+### Semantic Colors
+Used for badges, status cards, alerts, and trend lines.
+- **Success (Green)**: 
+  - CSS Variable: `--success` = `#00875a`
+  - Tailwind Classes (Alerts & Trends): `bg-emerald-50`, `text-emerald-800` (or `text-emerald-700` for text), ring color `ring-emerald-200/70`, dot `bg-emerald-500`
+- **Warning (Amber)**: 
+  - CSS Variable: `--warning` = `#b25e09`
+  - Tailwind Classes: `bg-amber-50`, `text-amber-800` (or `text-amber-700`), ring color `ring-amber-200/70`, dot `bg-amber-500`
+- **Danger/Error (Red)**: 
+  - CSS Variable: `--danger` = `#b91c1c`
+  - Tailwind Classes: `bg-red-50`, `text-red-800` (or `text-red-700`), ring color `ring-red-200/70`, dot `bg-red-500`
+- **Info (Blue)**: 
+  - CSS Variable: `--info` = `#0b63f6`
+  - Tailwind Classes: `bg-blue-50`, `text-blue-800`, ring color `ring-blue-200/70`, dot `bg-blue-500`
+- **Neutral (Gray)**:
+  - Tailwind Classes: `bg-neutral-100`, `text-neutral-800`, ring color `ring-neutral-200`, dot `bg-neutral-500`
+
+### Charting Monochrome Palette (Recharts)
+Used for data representation and pie charts to align with the institutional theme:
+- **Bonds / Base**: `#0a0a0a` (Solid Black)
+- **Credit / Secondary**: `#404040` (Dark gray)
+- **Commodities / Tertiary**: `#737373` (Medium gray)
+- **Equity / Quaternary**: `#a3a3a3` (Light gray)
+- **Chart Grid Stroke**: `#f1f1f3`
+- **Chart Tick Stroke**: `#86868b`
+
+---
+
+## 4. UI Components & Elements
+
+### Cards
+- **Standard Card** (`.card`): 
+  - CSS: `background: #ffffff`, `border: 1px solid var(--border)`, `border-radius: 20px` (or `rounded-2xl` in Tailwind)
+- **Soft Card** (`.card-soft`): 
+  - CSS: `background: var(--surface-elev)` (`#f5f5f7`), `border: 1px solid var(--border)`, `border-radius: 20px`
+- **Dark Institutional Card** (`.card-dark`): 
+  - CSS: `background: #0a0a0a`, `color: #ffffff`, `border-radius: 24px`
+
+### Buttons
+- **Primary Button** (`.btn-primary`):
+  - CSS: inline-flex, gap `0.5rem`, bg `#0a0a0a` (neutral-950), text `#ffffff`, padding `0.75rem 1.5rem` (`px-6 py-3`), border-radius `9999px` (fully rounded), font-size `0.9375rem` (`15px`), font weight `500`.
+  - Hover states: bg `#1d1d1f`, transform translateY(-1px), shadow `0 12px 32px -12px rgba(0, 0, 0, 0.35)`.
+- **Secondary Button** (`.btn-secondary`):
+  - CSS: inline-flex, gap `0.5rem`, bg `#ffffff`, text `#0a0a0a`, padding `0.75rem 1.5rem` (`px-6 py-3`), border-radius `9999px` (fully rounded), font-size `0.9375rem` (`15px`), font weight `500`, border `1px solid var(--border-strong)` (`#d2d2d7`).
+  - Hover states: bg `var(--surface-elev)` (`#f5f5f7`), border-color `#0a0a0a`.
+- **Ghost Button** (`.btn-ghost`):
+  - CSS: inline-flex, gap `0.375rem`, text `#0a0a0a`, font-size `0.9375rem` (`15px`), font weight `500`.
+  - Hover state: opacity `0.65`.
+
+### Form Fields & Inputs
+- **Base Input** (`inputCls`):
+  - Tailwind: `w-full rounded-lg border border-neutral-200 bg-neutral-50 py-2.5 px-4 text-[13px] text-neutral-950 placeholder-neutral-400 focus:border-neutral-950 focus:outline-none focus:ring-1 focus:ring-neutral-950/20`
+- **Input with Icon** (`inputWithIconCls`):
+  - Tailwind: `w-full rounded-lg border border-neutral-200 bg-neutral-50 py-2.5 pl-9 pr-4 text-[13px] text-neutral-950 placeholder-neutral-400 focus:border-neutral-950 focus:outline-none focus:ring-1 focus:ring-neutral-950/20`
+  - Icon Style: position absolute `left-3 top-1/2 -translate-y-1/2`, height/width `h-3.5 w-3.5`, color `text-neutral-400`
+- **Labels**: 
+  - Tailwind: `mb-1.5 block text-[12px] font-medium text-neutral-800`
+- **Hints**:
+  - Tailwind: `mb-1.5 text-[11px] text-neutral-500`
+
+### Tables
+- **Container**: `overflow-hidden rounded-xl border border-neutral-200 bg-white`
+- **Header Row**: `border-b border-neutral-200`
+- **Header Cells** (`th`): `px-5 py-3 text-left text-xs font-medium text-neutral-600`
+- **Body Rows**: `hover:bg-neutral-50 transition-colors` with borders as `divide-y divide-neutral-200` in the `tbody`.
+- **Body Cells** (`td`): `px-5 py-4`
+- **Table Texts**:
+  - Main/Entity Text: `text-sm font-medium text-neutral-900`
+  - Metadata / Wallet Address: `text-xs text-neutral-500 font-mono`
+  - Standard Field Value: `text-sm text-neutral-800`
+
+### Tabs & Filter Selectors
+- **Tabs Container**: `flex items-center gap-2`
+- **Tab Buttons**: `rounded-lg border px-3 py-2 text-xs capitalize transition-colors`
+  - Active: `border-neutral-950 bg-neutral-950/5 text-neutral-950`
+  - Inactive: `border-neutral-200 text-neutral-600 hover:text-neutral-900`
+
+---
+
+## 5. Layout & Grid Settings
+- **Sidebar Width**: Fixed `260px` (`w-[260px]`). Sidebar background is `#ffffff` with a right border `border-r border-neutral-200`.
+- **Header Height**: Fixed `64px` (`h-16`). Background has opacity and blur: `bg-white/80 backdrop-blur-xl`, with a bottom border `border-b border-neutral-200`.
+- **App Main Area**: Padding is `px-8 py-8` (32px padding on all sides). Outer page background is `bg-neutral-50`.
+- **Grid Background Overlay**:
+  - Light: `.bg-grid` (linear-gradient right and down with `rgba(0, 0, 0, 0.04) 1px`, size `48px 48px`).
+  - Dark: `.bg-grid-dark` (linear-gradient right and down with `rgba(255, 255, 255, 0.06) 1px`, size `48px 48px`).
+- **Radial Glow Effects**: `.halo-light` (radial gradient `60% 50% at 50% 0%`, with colors `rgba(10, 10, 10, 0.06) 0%` fading to `transparent 70%`).
+
+---
+
+## 6. Animations & Custom Globals
+
+### Keyframes & Animations
+- **Fade Up** (`.animate-fade-up`): Used to slide up elements on page loads.
+  - Duration: `720ms`
+  - Cubic Bezier: `cubic-bezier(0.22, 1, 0.36, 1)`
+  - Effect: Opacity `0` to `1`, translateY `12px` to `0`.
+- **Marquee** (`.animate-marquee`): Used for client logo lists on the marketing pages.
+  - Duration: `38s` (linear, infinite loops).
+  - Effect: TranslateX `0` to `-50%`.
+
+### Selection Styling
+- **Background**: `#0a0a0a`
+- **Text Color**: `#ffffff`
+
+### Scrollbars
+- **Width / Height**: `10px`
+- **Track**: `transparent`
+- **Thumb**:
+  - Background: `#d2d2d7`
+  - Border: `2px solid #ffffff`
+  - Border Radius: `8px`
+  - Hover Background: `#86868b`
