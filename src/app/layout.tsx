@@ -6,10 +6,10 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-geist-sans" });
 
 export const metadata: Metadata = {
-  title: "EQUITEX — Institutional RWA Tokenization",
+  title: "POLYCRUZ — Institutional RWA Tokenization",
   description:
     "The institutional-grade platform for tokenizing real-world assets. Built for BlackRock, JP Morgan, and the world's top banks — with on-chain compliance, stablecoin settlement, and deep liquidity.",
-  metadataBase: new URL("https://equitex.finance"),
+  metadataBase: new URL("https://POLYCRUZ.io"),
 };
 
 export default function RootLayout({

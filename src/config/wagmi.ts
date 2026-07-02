@@ -10,7 +10,7 @@ const projectId =
   "34fc8a5eafe142d51473e7e17e495d9c";
 
 export const config = getDefaultConfig({
-  appName: "EQUITEX — Institutional RWA Tokenization",
+  appName: "POLYCRUZ — Institutional RWA Tokenization",
   projectId,
   chains: [sepolia, polygonAmoy, hardhat],
   transports: {

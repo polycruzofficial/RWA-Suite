@@ -33,7 +33,7 @@ export default function Sidebar({
       <div className="flex h-16 items-center gap-3 border-b border-neutral-200 px-6">
         <Link href="/" className="flex items-center gap-2.5">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-950 text-[11px] font-bold text-white">
-            EQ
+            PC
           </span>
           <span className="text-[15px] font-semibold tracking-tight text-neutral-950">
             {brand}

@@ -33,7 +33,7 @@ export default function InvestorLayout({
 }) {
   return (
     <DashboardLayout
-      brand="Equitex"
+      brand="POLYCRUZ"
       sectionLabel="Investor"
       navItems={investorNav}
       titles={titles}

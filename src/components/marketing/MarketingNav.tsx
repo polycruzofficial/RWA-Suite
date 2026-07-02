@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Menu, X } from "lucide-react";
+import { Menu, X, BookOpen } from "lucide-react";
 
 const links = [
   { href: "#platform", label: "Platform" },
   { href: "#assets", label: "Assets" },
   { href: "#compliance", label: "Compliance" },
   { href: "#institutions", label: "Institutions" },
+  { href: "/docs", label: "Docs" },
 ];
 
 export default function MarketingNav() {
@@ -19,23 +20,34 @@ export default function MarketingNav() {
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
         <Link href="/" className="flex items-center gap-2">
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-950 text-xs font-bold text-white">
-            EQ
+            PC
           </span>
           <span className="text-[15px] font-semibold tracking-tight text-neutral-950">
-            Equitex
+            POLYCRUZ
           </span>
         </Link>
 
         <nav className="hidden items-center gap-8 md:flex">
-          {links.map((l) => (
-            <a
-              key={l.href}
-              href={l.href}
-              className="text-[13px] font-medium text-neutral-700 transition hover:text-neutral-950"
-            >
-              {l.label}
-            </a>
-          ))}
+          {links.map((l) =>
+            l.href.startsWith("/") ? (
+              <Link
+                key={l.href}
+                href={l.href}
+                className="flex items-center gap-1.5 text-[13px] font-medium text-neutral-700 transition hover:text-neutral-950"
+              >
+                {l.label === "Docs" && <BookOpen className="h-3.5 w-3.5" />}
+                {l.label}
+              </Link>
+            ) : (
+              <a
+                key={l.href}
+                href={l.href}
+                className="text-[13px] font-medium text-neutral-700 transition hover:text-neutral-950"
+              >
+                {l.label}
+              </a>
+            )
+          )}
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">

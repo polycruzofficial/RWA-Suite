@@ -206,7 +206,7 @@ export default function KYCPage() {
               Tell us who you are.
             </h2>
             <p className="mt-2 text-[14px] text-neutral-600">
-              One-time KYC. Unlocks access to every regulated asset on Equitex.
+              One-time KYC. Unlocks access to every regulated asset on POLYCRUZ.
             </p>
 
             <div className="mt-8 space-y-5">

@@ -114,9 +114,9 @@ export default function LandingPage() {
             </h1>
 
             <p className="mx-auto mt-8 max-w-2xl text-lg leading-relaxed text-neutral-600 md:text-xl">
-              Equitex is the tokenization platform trusted by the world's
+              POLYCRUZ is the tokenization platform trusted by the world's
               largest asset managers. Issue, distribute, and settle regulated
-              financial instruments — entirely on-chain.
+              financial instruments entirely on-chain.
             </p>
 
             <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -199,7 +199,7 @@ export default function LandingPage() {
       </section>
 
       {/* TRUSTED BY */}
-      <section className="border-y border-neutral-200 bg-neutral-50 py-12">
+      {/* <section className="border-y border-neutral-200 bg-neutral-50 py-12">
         <div className="mx-auto max-w-7xl px-6">
           <p className="text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
             Trusted by the world's top institutions
@@ -217,7 +217,7 @@ export default function LandingPage() {
             </div>
           </div>
         </div>
-      </section>
+      </section> */}
 
       {/* PLATFORM FEATURES */}
       <section id="platform" className="relative py-28 md:py-36">
@@ -229,7 +229,7 @@ export default function LandingPage() {
             </h2>
             <p className="mt-6 max-w-2xl text-lg text-neutral-600">
               Every building block a regulated institution needs to bring a
-              real-world asset on-chain — unified, interoperable, audited.
+              real-world asset on-chain - unified, interoperable, audited.
             </p>
           </div>
 
@@ -369,7 +369,7 @@ export default function LandingPage() {
                 <span className="text-neutral-400">not by retrofit.</span>
               </h2>
               <p className="mt-6 text-[16px] leading-relaxed text-neutral-600">
-                Equitex implements the ERC-3643 / T-REX standard at the
+                POLYCRUZ implements the ERC-3643 / T-REX standard at the
                 contract level. Every transfer checks identity, jurisdiction,
                 sanctions lists, and holding periods before it executes.
               </p>
@@ -467,7 +467,7 @@ export default function LandingPage() {
               <span className="text-white/50">regulated capital.</span>
             </h2>
             <p className="mx-auto mt-6 max-w-2xl text-lg text-white/70">
-              Equitex is the operating system for the next decade of capital
+              POLYCRUZ is the operating system for the next decade of capital
               markets. Join the leading banks, asset managers, and sovereigns
               already building on us.
             </p>

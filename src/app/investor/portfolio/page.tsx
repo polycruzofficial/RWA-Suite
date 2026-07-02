@@ -32,7 +32,7 @@ import {
 const holdings = assets.slice(0, 4).map((a, i) => ({
   ...a,
   balance: [12500, 8000, 4200, 15600][i],
-  cost: [1.0, 0.95, 1.08, 2_300][i],
+  cost: [1.0, 0.95, 1.08, 1.05][i],
 }));
 
 const equityCurve = [

@@ -48,7 +48,7 @@ export default function IssuerLayout({
 }) {
   return (
     <DashboardLayout
-      brand="Equitex"
+      brand="POLYCRUZ"
       sectionLabel="Issuer Console"
       navItems={issuerNav}
       titles={titles}
