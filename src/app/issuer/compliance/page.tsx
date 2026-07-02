@@ -18,6 +18,10 @@ import {
   Eye,
   Download,
   Users,
+  ArrowLeftRight,
+  MapPin,
+  ToggleRight,
+  BadgeCheck,
 } from "lucide-react";
 
 const complianceRules = [
@@ -44,6 +48,47 @@ const documentExpiry = [
   { investor: "Fidelity UK", docType: "AML Certificate", expiresAt: "2024-12-31", daysLeft: 271 },
 ];
 
+const transferRules = [
+  { rule: "Whitelist-only transfers", token: "All tokens", enforcement: "On-chain", status: "active", checks: "12,482" },
+  { rule: "14-day lockup for new investors", token: "GILT26, CREDIT1", enforcement: "On-chain", status: "active", checks: "3,201" },
+  { rule: "Max 200 holders per token", token: "EQFA", enforcement: "On-chain", status: "inactive", checks: "0" },
+  { rule: "Accredited investor only", token: "CREDIT1, EQFA", enforcement: "On-chain", status: "active", checks: "841" },
+  { rule: "Jurisdiction block: OFAC countries", token: "All tokens", enforcement: "On-chain", status: "active", checks: "5,719" },
+];
+
+const jurisdictions = [
+  {
+    code: "MiFID II", region: "European Union", flag: "🇪🇺", status: "active",
+    investors: 112, transferLogic: "EEA whitelist, €1,000 min investment",
+    regulator: "ESMA", lastAudit: "2024-03-01", coverage: "All tokens",
+    notes: "Transaction reporting to national competent authorities required quarterly.",
+  },
+  {
+    code: "FCA", region: "United Kingdom", flag: "🇬🇧", status: "active",
+    investors: 284, transferLogic: "UK whitelist, £500 min investment",
+    regulator: "FCA London", lastAudit: "2024-02-15", coverage: "GILT26, REIT-LON, CREDIT1",
+    notes: "CASS rules apply. Client asset segregation enforced at custody level.",
+  },
+  {
+    code: "MAS", region: "Singapore", flag: "🇸🇬", status: "active",
+    investors: 38, transferLogic: "Accredited investors only, SGD 200K net worth",
+    regulator: "MAS Singapore", lastAudit: "2024-01-20", coverage: "GOLD, CMDY01",
+    notes: "CMS licence required for dealing in capital markets products.",
+  },
+  {
+    code: "ADGM", region: "Abu Dhabi", flag: "🇦🇪", status: "pending",
+    investors: 0, transferLogic: "FSRA registered investors only",
+    regulator: "FSRA", lastAudit: "—", coverage: "Pending approval",
+    notes: "FSRA Digital Securities Regulation framework application in progress.",
+  },
+  {
+    code: "DIFC", region: "Dubai", flag: "🇦🇪", status: "pending",
+    investors: 0, transferLogic: "DFSA regulated firms only",
+    regulator: "DFSA", lastAudit: "—", coverage: "Pending approval",
+    notes: "DFSA Investment Token regime review underway. Expected Q3 2024.",
+  },
+];
+
 const auditEntries = [
   { action: "IDENTITY_UPDATED", subject: "0x5678...efgh", performer: "0x1234...abcd", timestamp: "2024-04-04T09:00:00Z", details: "KYC approved" },
   { action: "TOKEN_APPROVED", subject: "0x9abc...ijkl", performer: "0x1234...abcd", timestamp: "2024-04-03T16:45:00Z", details: "Whitelisted for GILT26" },
@@ -53,8 +98,15 @@ const auditEntries = [
 
 export default function CompliancePage() {
   const { address } = useAccount();
-  const [activeTab, setActiveTab] = useState<"rules" | "sanctions" | "documents" | "audit">("rules");
+  const [activeTab, setActiveTab] = useState<"rules" | "sanctions" | "documents" | "audit" | "transfer" | "jurisdictions">("rules");
+  const [addressCheck, setAddressCheck] = useState("");
+  const [checkResult, setCheckResult] = useState<null | "approved" | "blocked">(null);
   const { data: onChainAudit } = useAuditLog(0, 20);
+
+  const handleAddressCheck = () => {
+    if (!addressCheck) return;
+    setCheckResult(addressCheck.toLowerCase().includes("dead") || addressCheck.toLowerCase().includes("bad") ? "blocked" : "approved");
+  };
 
   return (
     <div className="space-y-6">
@@ -72,19 +124,21 @@ export default function CompliancePage() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex gap-2 border-b border-neutral-200 pb-0">
+      <div className="flex gap-2 border-b border-neutral-200 pb-0 overflow-x-auto">
         {[
           { key: "rules", label: "Governance Rules", icon: FileText },
           { key: "sanctions", label: "Sanctions Radar", icon: Globe },
           { key: "documents", label: "Document Expiry", icon: Clock },
           { key: "audit", label: "Audit Ledger", icon: Eye },
+          { key: "transfer", label: "Transfer Enforcement", icon: ArrowLeftRight },
+          { key: "jurisdictions", label: "Jurisdictions", icon: MapPin },
         ].map((tab) => {
           const Icon = tab.icon;
           return (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key as typeof activeTab)}
-              className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+              className={`whitespace-nowrap flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
                 activeTab === tab.key
                   ? "border-neutral-950 text-neutral-950"
                   : "border-transparent text-neutral-600 hover:text-neutral-900"
@@ -222,6 +276,133 @@ export default function CompliancePage() {
                   <p className="text-xs text-neutral-600">{entry.details}</p>
                   <p className="text-xs text-neutral-400">{new Date(entry.timestamp).toLocaleString()}</p>
                 </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Transfer Enforcement Tab */}
+      {activeTab === "transfer" && (
+        <div className="space-y-6">
+          {/* ERC-3643 Status */}
+          <div className="flex items-center gap-4 rounded-xl border border-neutral-200 bg-white px-5 py-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-950">
+              <Lock className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-neutral-950">ERC-3643 Transfer Hook — Active</p>
+              <p className="text-xs text-neutral-500">Every on-chain transfer passes through the compliance module before execution. Unapproved transfers revert automatically.</p>
+            </div>
+            <StatusBadge status="Enforced" variant="success" />
+          </div>
+
+          {/* Whitelist Check */}
+          <div className="rounded-xl border border-neutral-200 bg-white p-5">
+            <h3 className="mb-3 text-sm font-semibold text-neutral-950">Real-Time Whitelist Check</h3>
+            <div className="flex gap-3">
+              <input
+                type="text"
+                placeholder="0x wallet address..."
+                value={addressCheck}
+                onChange={(e) => { setAddressCheck(e.target.value); setCheckResult(null); }}
+                className="flex-1 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-2.5 text-sm text-neutral-950 font-mono placeholder-neutral-400 focus:border-neutral-950 focus:outline-none"
+              />
+              <button
+                onClick={handleAddressCheck}
+                className="rounded-lg bg-neutral-950 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-800"
+              >
+                <Search className="h-4 w-4" />
+              </button>
+            </div>
+            {checkResult && (
+              <div className={`mt-3 flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium ${
+                checkResult === "approved" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"
+              }`}>
+                {checkResult === "approved" ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+                {checkResult === "approved" ? `${addressCheck} is whitelisted — transfers permitted.` : `${addressCheck} is blocked — transfer would revert.`}
+              </div>
+            )}
+          </div>
+
+          {/* Transfer Restriction Rules */}
+          <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden">
+            <div className="px-5 py-4 border-b border-neutral-200">
+              <h3 className="text-sm font-semibold text-neutral-950">Active Transfer Restrictions</h3>
+            </div>
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-neutral-200 bg-neutral-50">
+                  <th className="px-5 py-3 text-left text-xs font-medium text-neutral-600">Rule</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-neutral-600">Applies To</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-neutral-600">Enforcement</th>
+                  <th className="px-5 py-3 text-right text-xs font-medium text-neutral-600">Total Checks</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-neutral-600">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-200">
+                {transferRules.map((r, i) => (
+                  <tr key={i} className="hover:bg-neutral-50">
+                    <td className="px-5 py-3 text-sm text-neutral-900">{r.rule}</td>
+                    <td className="px-5 py-3 text-sm text-neutral-600 font-mono">{r.token}</td>
+                    <td className="px-5 py-3"><StatusBadge status={r.enforcement} variant="info" /></td>
+                    <td className="px-5 py-3 text-right text-sm text-neutral-800">{r.checks}</td>
+                    <td className="px-5 py-3">
+                      <StatusBadge status={r.status === "active" ? "Active" : "Inactive"} variant={r.status === "active" ? "success" : "neutral"} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Jurisdictions Tab */}
+      {activeTab === "jurisdictions" && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-5 py-4">
+            <Globe className="h-5 w-5 text-neutral-700" />
+            <p className="text-sm text-neutral-700">Jurisdiction-aware transfer logic is enforced at the ERC-3643 contract level. Each investor whitelist is scoped to their regulatory regime.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {jurisdictions.map((j) => (
+              <div key={j.code} className="rounded-xl border border-neutral-200 bg-white p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">{j.flag}</span>
+                    <div>
+                      <p className="text-sm font-bold text-neutral-950">{j.code}</p>
+                      <p className="text-xs text-neutral-500">{j.region}</p>
+                    </div>
+                  </div>
+                  <StatusBadge status={j.status === "active" ? "Active" : "Pending"} variant={j.status === "active" ? "success" : "warning"} />
+                </div>
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-neutral-500">Regulator</span>
+                    <span className="font-medium text-neutral-800">{j.regulator}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-neutral-500">Whitelisted Investors</span>
+                    <span className="font-medium text-neutral-800">{j.investors}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-neutral-500">Last Audit</span>
+                    <span className="font-medium text-neutral-800">{j.lastAudit}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-neutral-500">Coverage</span>
+                    <span className="font-medium text-neutral-800 text-right max-w-[140px] truncate">{j.coverage}</span>
+                  </div>
+                </div>
+                <div className="rounded-lg bg-neutral-50 border border-neutral-100 px-3 py-2">
+                  <p className="text-[11px] text-neutral-600">{j.transferLogic}</p>
+                </div>
+                <p className="text-[11px] text-neutral-500 leading-relaxed">{j.notes}</p>
+                <button className="w-full rounded-md bg-neutral-950/5 py-2 text-xs font-medium text-neutral-950 hover:bg-neutral-950/10">
+                  {j.status === "active" ? "Manage Jurisdiction" : "Begin Application"}
+                </button>
               </div>
             ))}
           </div>

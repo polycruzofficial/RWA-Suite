@@ -47,10 +47,10 @@ function GetStartedInner() {
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
           <Link href="/" className="flex items-center gap-2">
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-950 text-xs font-bold text-white">
-              EQ
+              PC
             </span>
             <span className="text-[15px] font-semibold tracking-tight text-neutral-950">
-              Equitex
+              POLYCRUZ
             </span>
           </Link>
           <Link href="/" className="text-[13px] text-neutral-600 hover:text-neutral-950">

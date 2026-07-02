@@ -1,7 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
+import { parseEther } from "viem";
+import { useMintTokens, useContractAddresses } from "@/hooks/useContracts";
+import { getAssetsByIssuer, saveTransaction, type DBAsset } from "@/lib/supabase";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatCard from "@/components/ui/StatCard";
 import {
@@ -13,6 +16,9 @@ import {
   Unlock,
   DollarSign,
   ArrowUpRight,
+  Loader2,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import {
   AreaChart,
@@ -54,8 +60,67 @@ const collateralPositions = [
 ];
 
 export default function LiquidityPage() {
-  const { isConnected } = useAccount();
+  const { address, isConnected } = useAccount();
   const [activeTab, setActiveTab] = useState<"pools" | "p2p" | "lending">("pools");
+
+  const [myAssets, setMyAssets] = useState<DBAsset[]>([]);
+  const [assetsLoading, setAssetsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!address) {
+      setMyAssets([]);
+      return;
+    }
+    setAssetsLoading(true);
+    getAssetsByIssuer(address)
+      .then(setMyAssets)
+      .catch(() => setMyAssets([]))
+      .finally(() => setAssetsLoading(false));
+  }, [address]);
+
+  const { mint, hash, isPending, isConfirming, isSuccess, error: mintError } = useMintTokens();
+  const { treasury: treasuryAddress } = useContractAddresses();
+
+  const [activePool, setActivePool] = useState<(typeof liquidityPools)[number] | null>(null);
+  const [liquidityForm, setLiquidityForm] = useState({ tokenAddress: "", amount: "" });
+  const [logged, setLogged] = useState(false);
+
+  const openAddLiquidity = (pool: (typeof liquidityPools)[number]) => {
+    const symbol = pool.pair.split("/")[0].trim();
+    const matched = myAssets.find((a) => a.symbol === symbol);
+    setLiquidityForm({ tokenAddress: matched?.token_address ?? myAssets[0]?.token_address ?? "", amount: "" });
+    setLogged(false);
+    setActivePool(pool);
+  };
+
+  const closeAddLiquidity = () => {
+    setActivePool(null);
+    setLiquidityForm({ tokenAddress: "", amount: "" });
+  };
+
+  const handleAddLiquidity = () => {
+    if (!liquidityForm.tokenAddress || !liquidityForm.amount || !address) return;
+    mint(
+      liquidityForm.tokenAddress as `0x${string}`,
+      treasuryAddress,
+      parseEther(liquidityForm.amount)
+    );
+  };
+
+  useEffect(() => {
+    if (isSuccess && hash && !logged) {
+      setLogged(true);
+      saveTransaction({
+        tx_hash: hash,
+        event_type: "LIQUIDITY_ADD",
+        token_address: liquidityForm.tokenAddress,
+        from_address: address,
+        to_address: treasuryAddress,
+        amount: liquidityForm.amount,
+        metadata: { pair: activePool?.pair },
+      }).catch(() => {});
+    }
+  }, [isSuccess, hash, logged, liquidityForm, address, activePool]);
 
   return (
     <div className="space-y-6">
@@ -139,7 +204,10 @@ export default function LiquidityPage() {
                   <td className="px-5 py-4 text-right text-sm text-neutral-800">{pool.volume24h}</td>
                   <td className="px-5 py-4"><StatusBadge status={pool.status} variant={pool.status === "active" ? "success" : "warning"} /></td>
                   <td className="px-5 py-4">
-                    <button className="rounded-md bg-neutral-950/5 px-3 py-1.5 text-xs font-medium text-neutral-950 hover:bg-neutral-950/10">
+                    <button
+                      onClick={() => openAddLiquidity(pool)}
+                      className="rounded-md bg-neutral-950/5 px-3 py-1.5 text-xs font-medium text-neutral-950 hover:bg-neutral-950/10"
+                    >
                       Add Liquidity
                     </button>
                   </td>
@@ -203,6 +271,84 @@ export default function LiquidityPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Add Liquidity Modal */}
+      {activePool && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-xl border border-neutral-200 bg-white p-6 space-y-4">
+            <div>
+              <h3 className="text-lg font-semibold text-neutral-950">Add Liquidity</h3>
+              <p className="text-sm text-neutral-600">{activePool.pair} pool</p>
+            </div>
+
+            {!isConnected && (
+              <p className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <AlertTriangle className="h-4 w-4" /> Connect your wallet to add liquidity on-chain.
+              </p>
+            )}
+
+            {isConnected && !assetsLoading && myAssets.length === 0 && (
+              <p className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <AlertTriangle className="h-4 w-4" /> No deployed tokens found for this wallet. Deploy an asset in Issuer Studio first.
+              </p>
+            )}
+
+            {isConnected && myAssets.length > 0 && (
+              <div className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-neutral-600">On-chain Asset</label>
+                  <select
+                    value={liquidityForm.tokenAddress}
+                    onChange={(e) => setLiquidityForm({ ...liquidityForm, tokenAddress: e.target.value })}
+                    className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm text-neutral-950 focus:border-neutral-950 focus:outline-none"
+                  >
+                    {myAssets.map((a) => (
+                      <option key={a.token_address} value={a.token_address}>
+                        {a.symbol} — {a.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-neutral-600">Amount to Add</label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    placeholder="0.00"
+                    value={liquidityForm.amount}
+                    onChange={(e) => setLiquidityForm({ ...liquidityForm, amount: e.target.value })}
+                    className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm text-neutral-950 placeholder-neutral-400 focus:border-neutral-950 focus:outline-none"
+                  />
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Mints new supply directly into the treasury vault, backing this pool's liquidity.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {isPending && <p className="flex items-center gap-2 text-sm text-amber-700"><Loader2 className="h-4 w-4 animate-spin" />Confirm in wallet...</p>}
+            {isConfirming && <p className="flex items-center gap-2 text-sm text-amber-700"><Loader2 className="h-4 w-4 animate-spin" />Adding liquidity on-chain...</p>}
+            {isSuccess && <p className="flex items-center gap-2 text-sm text-emerald-700"><CheckCircle2 className="h-4 w-4" />Liquidity added on-chain!</p>}
+            {mintError && <p className="text-sm text-red-700">{mintError.message}</p>}
+
+            <div className="flex justify-end gap-3">
+              <button onClick={closeAddLiquidity} className="rounded-lg border border-neutral-200 px-4 py-2.5 text-sm text-neutral-800 hover:bg-neutral-100">
+                {isSuccess ? "Close" : "Cancel"}
+              </button>
+              {!isSuccess && (
+                <button
+                  onClick={handleAddLiquidity}
+                  disabled={!isConnected || !liquidityForm.tokenAddress || !liquidityForm.amount || isPending || isConfirming}
+                  className="rounded-lg bg-neutral-950 px-5 py-2.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+                >
+                  {isPending || isConfirming ? "Adding..." : "Add Liquidity"}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

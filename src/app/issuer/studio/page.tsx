@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { useAccount } from "wagmi";
+import { useEffect, useState } from "react";
+import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import { parseEther, parseUnits } from "viem";
-import { useDeployToken, useIssuerTokens } from "@/hooks/useContracts";
+import { useDeployToken, useIssuerTokens, usePlatformFeeConfig, usePayDeploymentFee } from "@/hooks/useContracts";
+import { isChainDeployed } from "@/config/contracts";
+import { DEPLOYMENT_NETWORKS, getExplorerTxUrl } from "@/config/chains";
 import { uploadJSONToIPFS } from "@/lib/ipfs";
 import { saveAsset } from "@/lib/supabase";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -20,6 +22,7 @@ import {
   AlertTriangle,
   ChevronRight,
   Building2,
+  RefreshCw,
 } from "lucide-react";
 
 type AssetType = "bond" | "credit" | "commodity" | "equity";
@@ -61,8 +64,28 @@ const defaultForm: TokenForm = {
 
 export default function StudioPage() {
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const { switchChain, isPending: isSwitching } = useSwitchChain();
   const { deploy, hash, isPending, isConfirming, isSuccess, error } = useDeployToken();
   const { data: issuerTokens, refetch } = useIssuerTokens(address);
+  const feeConfig = usePlatformFeeConfig();
+  const {
+    payDeploymentFee,
+    isPending: isFeePending,
+    isConfirming: isFeeConfirming,
+    isSuccess: isFeeSuccess,
+    error: feeError,
+  } = usePayDeploymentFee();
+
+  const [selectedChainId, setSelectedChainId] = useState<number>(DEPLOYMENT_NETWORKS[0].id);
+  const selectedNetwork = DEPLOYMENT_NETWORKS.find((n) => n.id === selectedChainId) ?? DEPLOYMENT_NETWORKS[0];
+  const networkDeployed = isChainDeployed(selectedChainId);
+  const networkMatched = isConnected && chainId === selectedChainId;
+  const networkReady = networkMatched && networkDeployed;
+
+  const deploymentFeeWei = feeConfig.isDeployed ? ((feeConfig.deploymentFeeWei.data as bigint | undefined) ?? 0n) : 0n;
+  const feeRequired = feeConfig.isDeployed && deploymentFeeWei > 0n;
+  const [feePaid, setFeePaid] = useState(false);
 
   const [form, setForm] = useState<TokenForm>(defaultForm);
   const [step, setStep] = useState(1);
@@ -73,6 +96,19 @@ export default function StudioPage() {
   };
 
   const handleDeploy = async () => {
+    if (!address) return;
+
+    // Platform deployment fee (if PlatformFeeManager is deployed on this
+    // chain) must clear on-chain before the token itself is deployed.
+    if (feeRequired && !feePaid) {
+      payDeploymentFee(form.symbol, deploymentFeeWei);
+      return;
+    }
+
+    await proceedWithDeploy();
+  };
+
+  const proceedWithDeploy = async () => {
     if (!address) return;
 
     try {
@@ -137,6 +173,7 @@ export default function StudioPage() {
           maturity_date: form.maturityDate || null,
           yield_bps: Math.round(parseFloat(form.yieldBps || "0") * 100),
           risk_rating: form.riskRating,
+          chain_id: selectedChainId,
         });
       } catch {
         console.warn("Supabase save skipped - configure Supabase credentials");
@@ -147,9 +184,24 @@ export default function StudioPage() {
     }
   };
 
-  const canProceedStep1 = form.name && form.symbol && form.assetType;
-  const canProceedStep2 = form.totalValueUSD && form.initialSupply;
-  const canDeploy = canProceedStep1 && canProceedStep2 && isConnected;
+  // Once the platform deployment fee tx confirms, continue on to the actual
+  // token deployment automatically.
+  useEffect(() => {
+    if (isFeeSuccess && !feePaid) {
+      setFeePaid(true);
+      proceedWithDeploy();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFeeSuccess]);
+
+  // Reset fee-paid state if the issuer switches target networks.
+  useEffect(() => {
+    setFeePaid(false);
+  }, [selectedChainId]);
+
+  const canProceedAssetDetails = form.name && form.symbol && form.assetType;
+  const canProceedTokenConfig = form.totalValueUSD && form.initialSupply;
+  const canDeploy = canProceedAssetDetails && canProceedTokenConfig && networkReady;
 
   // Existing tokens list
   const existingTokens = (issuerTokens as Array<{
@@ -179,7 +231,7 @@ export default function StudioPage() {
         <div className="col-span-2 space-y-6">
           {/* Step Indicator */}
           <div className="flex items-center gap-4">
-            {[1, 2, 3].map((s) => (
+            {[1, 2, 3, 4].map((s) => (
               <button
                 key={s}
                 onClick={() => setStep(s)}
@@ -192,15 +244,97 @@ export default function StudioPage() {
                 }`}
               >
                 {step > s ? <CheckCircle2 className="h-4 w-4" /> : <span>{s}</span>}
-                {s === 1 && "Asset Details"}
-                {s === 2 && "Token Config"}
-                {s === 3 && "Deploy"}
+                {s === 1 && "Network"}
+                {s === 2 && "Asset Details"}
+                {s === 3 && "Token Config"}
+                {s === 4 && "Deploy"}
               </button>
             ))}
           </div>
 
-          {/* Step 1: Asset Details */}
+          {/* Step 1: Select Deployment Network */}
           {step === 1 && (
+            <div className="rounded-xl border border-neutral-200 bg-white p-6 space-y-5">
+              <div>
+                <h3 className="text-base font-semibold text-neutral-950">Select Deployment Network</h3>
+                <p className="mt-1 text-sm text-neutral-600">Choose the live mainnet your security token will be deployed to.</p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {DEPLOYMENT_NETWORKS.map((network) => {
+                  const deployed = isChainDeployed(network.id);
+                  const selected = selectedChainId === network.id;
+                  return (
+                    <button
+                      key={network.id}
+                      onClick={() => setSelectedChainId(network.id)}
+                      className={`flex flex-col items-start gap-3 rounded-lg border p-4 text-left transition-colors ${
+                        selected
+                          ? "border-neutral-950 bg-neutral-950/5"
+                          : "border-neutral-200 bg-neutral-50 hover:border-neutral-300"
+                      }`}
+                    >
+                      <div className="flex w-full items-center justify-between">
+                        <span
+                          className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white"
+                          style={{ backgroundColor: network.color }}
+                        >
+                          {network.nativeCurrency.slice(0, 1)}
+                        </span>
+                        <StatusBadge status={deployed ? "Live" : "Not deployed"} variant={deployed ? "success" : "warning"} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-neutral-900">{network.name}</p>
+                        <p className="text-xs text-neutral-500">Gas paid in {network.nativeCurrency}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {!isConnected && (
+                <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                  <AlertTriangle className="h-4 w-4 shrink-0" /> Connect your wallet to deploy to {selectedNetwork.name}.
+                </div>
+              )}
+              {isConnected && !networkMatched && (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                  <span className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0" /> Your wallet is connected to a different network.
+                  </span>
+                  <button
+                    onClick={() => switchChain({ chainId: selectedChainId })}
+                    disabled={isSwitching}
+                    className="flex shrink-0 items-center gap-1.5 rounded-md bg-neutral-950 px-3 py-1.5 font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${isSwitching ? "animate-spin" : ""}`} />
+                    Switch to {selectedNetwork.shortName}
+                  </button>
+                </div>
+              )}
+              {isConnected && networkMatched && !networkDeployed && (
+                <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  Contracts have not been deployed to {selectedNetwork.name} yet. You can continue drafting the token, but deployment will stay disabled until the factory contract goes live on this network.
+                </div>
+              )}
+              {networkReady && (
+                <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" /> Connected to {selectedNetwork.name} — ready to deploy.
+                </div>
+              )}
+
+              <button
+                onClick={() => setStep(2)}
+                className="flex items-center gap-2 rounded-lg bg-neutral-950 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-neutral-800"
+              >
+                Continue <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Step 2: Asset Details */}
+          {step === 2 && (
             <div className="rounded-xl border border-neutral-200 bg-white p-6 space-y-5">
               <h3 className="text-base font-semibold text-neutral-950">Asset Information</h3>
 
@@ -305,18 +439,26 @@ export default function StudioPage() {
                 />
               </div>
 
-              <button
-                onClick={() => setStep(2)}
-                disabled={!canProceedStep1}
-                className="flex items-center gap-2 rounded-lg bg-neutral-950 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Continue <ChevronRight className="h-4 w-4" />
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setStep(1)}
+                  className="rounded-lg border border-neutral-200 bg-neutral-50 px-5 py-2.5 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={() => setStep(3)}
+                  disabled={!canProceedAssetDetails}
+                  className="flex items-center gap-2 rounded-lg bg-neutral-950 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Continue <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           )}
 
-          {/* Step 2: Token Configuration */}
-          {step === 2 && (
+          {/* Step 3: Token Configuration */}
+          {step === 3 && (
             <div className="rounded-xl border border-neutral-200 bg-white p-6 space-y-5">
               <h3 className="text-base font-semibold text-neutral-950">Token Configuration</h3>
 
@@ -399,14 +541,14 @@ export default function StudioPage() {
 
               <div className="flex gap-3">
                 <button
-                  onClick={() => setStep(1)}
+                  onClick={() => setStep(2)}
                   className="rounded-lg border border-neutral-200 bg-neutral-50 px-5 py-2.5 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
                 >
                   Back
                 </button>
                 <button
-                  onClick={() => setStep(3)}
-                  disabled={!canProceedStep2}
+                  onClick={() => setStep(4)}
+                  disabled={!canProceedTokenConfig}
                   className="flex items-center gap-2 rounded-lg bg-neutral-950 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Review & Deploy <ChevronRight className="h-4 w-4" />
@@ -415,13 +557,15 @@ export default function StudioPage() {
             </div>
           )}
 
-          {/* Step 3: Review & Deploy */}
-          {step === 3 && (
+          {/* Step 4: Review & Deploy */}
+          {step === 4 && (
             <div className="rounded-xl border border-neutral-200 bg-white p-6 space-y-5">
               <h3 className="text-base font-semibold text-neutral-950">Review & Deploy</h3>
 
               <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 space-y-3">
                 <div className="grid grid-cols-2 gap-y-3 text-sm">
+                  <p className="text-neutral-600">Network</p>
+                  <p className="text-neutral-950 font-medium">{selectedNetwork.name}</p>
                   <p className="text-neutral-600">Token Name</p>
                   <p className="text-neutral-950 font-medium">{form.name || "—"}</p>
                   <p className="text-neutral-600">Symbol</p>
@@ -440,6 +584,14 @@ export default function StudioPage() {
                   <p className="text-neutral-950 font-medium">{form.maturityDate || "No maturity"}</p>
                   <p className="text-neutral-600">Risk Rating</p>
                   <p className="text-neutral-950 font-medium capitalize">{form.riskRating}</p>
+                  {feeRequired && (
+                    <>
+                      <p className="text-neutral-600">Platform Deployment Fee</p>
+                      <p className="text-neutral-950 font-medium">
+                        {(Number(deploymentFeeWei) / 1e18).toFixed(6)} {selectedNetwork.nativeCurrency}
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -455,7 +607,45 @@ export default function StudioPage() {
                 </div>
               </div>
 
+              {!networkReady && (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                  <span className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    {!isConnected
+                      ? "Connect your wallet to deploy."
+                      : !networkMatched
+                      ? `Your wallet is on a different network. Switch to ${selectedNetwork.name} to deploy.`
+                      : `Contracts are not deployed on ${selectedNetwork.name} yet.`}
+                  </span>
+                  {isConnected && !networkMatched && (
+                    <button
+                      onClick={() => switchChain({ chainId: selectedChainId })}
+                      disabled={isSwitching}
+                      className="flex shrink-0 items-center gap-1.5 rounded-md bg-neutral-950 px-3 py-1.5 font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${isSwitching ? "animate-spin" : ""}`} />
+                      Switch
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Status */}
+              {isFeePending && (
+                <div className="flex items-center gap-2 text-sm text-amber-700">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Waiting for platform fee confirmation...
+                </div>
+              )}
+              {isFeeConfirming && (
+                <div className="flex items-center gap-2 text-sm text-neutral-950">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Confirming platform fee on-chain...
+                </div>
+              )}
+              {feeError && (
+                <div className="flex items-center gap-2 text-sm text-red-700">
+                  <AlertTriangle className="h-4 w-4" /> {feeError.message.slice(0, 120)}
+                </div>
+              )}
               {isPending && (
                 <div className="flex items-center gap-2 text-sm text-amber-700">
                   <Loader2 className="h-4 w-4 animate-spin" /> Waiting for wallet confirmation...
@@ -469,14 +659,14 @@ export default function StudioPage() {
               {isSuccess && (
                 <div className="flex items-center gap-2 text-sm text-emerald-700">
                   <CheckCircle2 className="h-4 w-4" /> Token deployed successfully!
-                  {hash && (
+                  {hash && getExplorerTxUrl(chainId, hash) && (
                     <a
-                      href={`https://sepolia.etherscan.io/tx/${hash}`}
+                      href={getExplorerTxUrl(chainId, hash)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="underline"
                     >
-                      View on Etherscan
+                      View on {selectedNetwork.shortName} Explorer
                     </a>
                   )}
                 </div>
@@ -489,20 +679,24 @@ export default function StudioPage() {
 
               <div className="flex gap-3">
                 <button
-                  onClick={() => setStep(2)}
+                  onClick={() => setStep(3)}
                   className="rounded-lg border border-neutral-200 bg-neutral-50 px-5 py-2.5 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
                 >
                   Back
                 </button>
                 <button
                   onClick={handleDeploy}
-                  disabled={!canDeploy || isPending || isConfirming || isUploading}
+                  disabled={!canDeploy || isPending || isConfirming || isUploading || isFeePending || isFeeConfirming}
                   className="flex items-center gap-2 rounded-lg bg-neutral-950 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isUploading ? (
+                  {isFeePending || isFeeConfirming ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Paying platform fee...</>
+                  ) : isUploading ? (
                     <><Loader2 className="h-4 w-4 animate-spin" /> Uploading to IPFS...</>
                   ) : isPending ? (
                     <><Loader2 className="h-4 w-4 animate-spin" /> Deploying...</>
+                  ) : feeRequired && !feePaid ? (
+                    <><Coins className="h-4 w-4" /> Pay Fee & Deploy</>
                   ) : (
                     <><Coins className="h-4 w-4" /> Deploy Token</>
                   )}

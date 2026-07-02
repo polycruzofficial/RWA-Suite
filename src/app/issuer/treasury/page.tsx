@@ -49,7 +49,7 @@ const yieldHistory = [
 ];
 
 const yieldProducts = [
-  { name: "Equitex Gilt Fund", apy: "4.82%", risk: "Low", settlement: "T+1", provider: "HM Treasury", deposited: "£2,100,000" },
+  { name: "POLYCRUZ Gilt Fund", apy: "4.82%", risk: "Low", settlement: "T+1", provider: "HM Treasury", deposited: "£2,100,000" },
   { name: "Prime Money Market", apy: "5.12%", risk: "Minimal", settlement: "Instant", provider: "BlackRock", deposited: "£1,500,000" },
   { name: "High-Yield Credit Pool", apy: "7.45%", risk: "Medium", settlement: "30-day", provider: "Alpha Management", deposited: "£820,000" },
 ];

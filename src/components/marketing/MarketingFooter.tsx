@@ -47,10 +47,10 @@ export default function MarketingFooter() {
           <div className="md:col-span-1">
             <Link href="/" className="flex items-center gap-2">
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-950 text-xs font-bold text-white">
-                EQ
+                PC
               </span>
               <span className="text-[15px] font-semibold tracking-tight text-neutral-950">
-                Equitex
+                POLYCRUZ
               </span>
             </Link>
             <p className="mt-4 text-[13px] leading-relaxed text-neutral-600">
@@ -81,7 +81,7 @@ export default function MarketingFooter() {
         </div>
 
         <div className="mt-16 flex flex-col justify-between gap-4 border-t border-neutral-200 pt-8 text-[12px] text-neutral-500 md:flex-row">
-          <p>© 2026 Equitex Technologies Ltd. All rights reserved.</p>
+          <p>© 2026 POLYCRUZ Technologies Ltd. All rights reserved.</p>
           <p>
             Authorised and regulated entity. MiFID II • FCA • MAS • SEC-friendly
             architecture.

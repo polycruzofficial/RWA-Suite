@@ -5,6 +5,8 @@ import type * as compliance from "./compliance";
 export type { compliance };
 import type * as core from "./core";
 export type { core };
+import type * as platform from "./platform";
+export type { platform };
 import type * as treasury from "./treasury";
 export type { treasury };
 import type * as yield from "./yield";
