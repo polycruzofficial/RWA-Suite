@@ -1182,6 +1182,19 @@ export default function StudioPage() {
                       ))}
                     </div>
                   </div>
+                )}
+
+                <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 space-y-2 text-[12px] text-neutral-600">
+                  {[
+                    "All transfers enforce on-chain compliance automatically",
+                    "Metadata pinned to IPFS via Pinata",
+                    "Off-chain registry stored in Supabase",
+                  ].map((t) => (
+                    <div key={t} className="flex items-center gap-2">
+                      <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                      {t}
+                    </div>
+                  ))}
                 </div>
 
                 {/* Compliance checklist */}
@@ -1295,6 +1308,35 @@ export default function StudioPage() {
                       <><Coins className="h-4 w-4" /> Deploy & Submit for Approval</>}
                   </button>
                 </div>
+
+                {/* Implied token price */}
+                {form.totalValueUSD && form.initialSupply && (
+                  <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400 mb-2">Computed Tokenomics</p>
+                    <div className="grid grid-cols-3 gap-4 text-[12px]">
+                      <div>
+                        <p className="text-neutral-500">Token Price</p>
+                        <p className="font-semibold text-neutral-950 text-[15px]">
+                          ${(parseFloat(form.totalValueUSD) / parseFloat(form.initialSupply)).toFixed(4)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-neutral-500">Market Cap</p>
+                        <p className="font-semibold text-neutral-950 text-[15px]">
+                          ${Number(form.totalValueUSD).toLocaleString()}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-neutral-500">Est. Annual Yield</p>
+                        <p className="font-semibold text-emerald-700 text-[15px]">
+                          {form.yieldBps || "0"}% APY
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <NavButtons onBack={() => setStep(4)} onNext={() => setStep(6)} nextDisabled={!canStep5} nextLabel="Continue to Documents" />
               </div>
             )}
 

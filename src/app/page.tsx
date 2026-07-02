@@ -1,6 +1,7 @@
 import Link from "next/link";
 import MarketingNav from "@/components/marketing/MarketingNav";
 import MarketingFooter from "@/components/marketing/MarketingFooter";
+import { Achievements } from "@/components/marketing/Achievements";
 import {
   ArrowRight,
   ShieldCheck,
@@ -452,6 +453,8 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      <Achievements />
 
       {/* INSTITUTIONS CTA */}
       <section id="institutions" className="bg-neutral-950 py-28 text-white md:py-36">
