@@ -45,16 +45,16 @@ export interface RwaAssetsResponse {
 
 /* ─── Category + chain maps ──────────────────────────────────────────────────── */
 
+// Kept short and fetched sequentially (see GET) — CoinGecko's free anonymous
+// tier rate-limits hard on bursts of parallel requests. "real-world-assets-rwa"
+// is the broad parent bucket and already covers most tokens on its own; the
+// rest fill in categories it sometimes misses.
 const RWA_CATEGORIES: Record<string, string> = {
   "real-world-assets-rwa": "Real World Assets",
   "tokenized-gold": "Tokenized Gold",
-  "tokenized-silver": "Tokenized Silver",
   "tokenized-treasuries": "Tokenized Treasuries",
-  "tokenized-t-bills": "Tokenized T-Bills",
-  "tokenized-treasury-bonds-t-bonds": "Tokenized T-Bonds",
   "tokenized-private-credit": "Tokenized Private Credit",
   "tokenized-money-market-fund-mmfs": "Tokenized Money Market Funds",
-  "tokenized-commodities": "Tokenized Commodities",
   "ondo-tokenized-assets": "Ondo Tokenized Assets",
 };
 
@@ -83,6 +83,10 @@ async function safeFetchJson<T>(url: string, revalidate: number): Promise<T | nu
   }
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 interface CgMarketCoin {
   id: string;
   symbol: string;
@@ -104,29 +108,27 @@ interface CgListCoin {
 export async function GET() {
   const errors: string[] = [];
 
+  // Fetched one at a time with spacing — CoinGecko's free anonymous tier
+  // returns 429s almost immediately when hit with parallel requests.
   const categoryEntries = Object.entries(RWA_CATEGORIES);
-  const marketResults = await Promise.all(
-    categoryEntries.map(async ([catId, label]) => {
-      const url =
-        `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&category=${catId}` +
-        `&order=market_cap_desc&per_page=100&page=1&sparkline=false&price_change_percentage=24h`;
-      const data = await safeFetchJson<CgMarketCoin[]>(url, 300);
-      if (!data) {
-        errors.push(`CoinGecko category "${catId}": unreachable`);
-        return [] as Array<{ coin: CgMarketCoin; category: string }>;
-      }
-      return data.map((coin) => ({ coin, category: label }));
-    })
-  );
-
-  // De-dupe by coin id — a token can appear in several RWA categories.
   const byId = new Map<string, { coin: CgMarketCoin; categories: Set<string> }>();
-  for (const rows of marketResults) {
-    for (const { coin, category } of rows) {
-      const existing = byId.get(coin.id);
-      if (existing) existing.categories.add(category);
-      else byId.set(coin.id, { coin, categories: new Set([category]) });
+
+  for (let i = 0; i < categoryEntries.length; i++) {
+    const [catId, label] = categoryEntries[i];
+    const url =
+      `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&category=${catId}` +
+      `&order=market_cap_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h`;
+    const data = await safeFetchJson<CgMarketCoin[]>(url, 300);
+    if (!data) {
+      errors.push(`CoinGecko category "${catId}": unreachable`);
+    } else {
+      for (const coin of data) {
+        const existing = byId.get(coin.id);
+        if (existing) existing.categories.add(label);
+        else byId.set(coin.id, { coin, categories: new Set([label]) });
+      }
     }
+    if (i < categoryEntries.length - 1) await sleep(1_500);
   }
 
   if (byId.size === 0) {
@@ -141,6 +143,7 @@ export async function GET() {
 
   // Bulk platform/contract-address lookup — one call covers every coin
   // CoinGecko tracks, so it's far cheaper than N per-coin detail calls.
+  await sleep(1_500);
   const listData = await safeFetchJson<CgListCoin[]>(
     "https://api.coingecko.com/api/v3/coins/list?include_platform=true",
     21_600 // 6h — contract mappings essentially never change
