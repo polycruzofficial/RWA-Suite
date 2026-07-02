@@ -3,5 +3,6 @@
 /* eslint-disable */
 export * as compliance from "./compliance";
 export * as core from "./core";
+export * as platform from "./platform";
 export * as treasury from "./treasury";
 export * as yield from "./yield";

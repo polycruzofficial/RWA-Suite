@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import { parseEther, parseUnits } from "viem";
-import { useDeployToken, useIssuerTokens } from "@/hooks/useContracts";
+import { useDeployToken, useIssuerTokens, usePlatformFeeConfig, usePayDeploymentFee } from "@/hooks/useContracts";
+import { isChainDeployed } from "@/config/contracts";
+import { DEPLOYMENT_NETWORKS, getChainName, getExplorerTxUrl } from "@/config/chains";
 import { uploadJSONToIPFS } from "@/lib/ipfs";
 import { saveAsset } from "@/lib/supabase";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -15,7 +17,7 @@ import {
   Zap, Palette, Leaf, Banknote, CreditCard, ExternalLink, Wallet,
   LayoutGrid, List, Plus, ArrowRight, ShieldCheck, Upload, BadgeCheck,
   Clock, Send, Link2, Users, FileCheck2, Fingerprint, Star,
-  ChevronLeft, Check,
+  ChevronLeft, Check, RefreshCw,
 } from "lucide-react";
 
 // ─── Asset class registry ──────────────────────────────────────────────────
@@ -209,13 +211,12 @@ const defaultForm: TokenForm = {
   financialsName: "",
 };
 
-const CHAINS = [
-  { id: 1, short: "Ethereum", tag: "Mainnet" },
-  { id: 137, short: "Polygon", tag: "Mainnet" },
-  { id: 8453, short: "Base", tag: "Mainnet" },
-  { id: 11155111, short: "Sepolia", tag: "Testnet" },
-  { id: 80002, short: "Amoy", tag: "Testnet" },
-  { id: 31337, short: "Hardhat", tag: "Local" },
+// Testnets / local — kept separate from the live mainnet grid in Step 2 since
+// they never carry a real listing fee and are for testing only.
+const TEST_CHAINS = [
+  { id: 11155111, short: "Sepolia" },
+  { id: 80002, short: "Amoy" },
+  { id: 31337, short: "Hardhat" },
 ];
 
 const WIZARD_STEPS = [
@@ -323,21 +324,48 @@ function NavButtons({
 export default function StudioPage() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
-  const { switchChain } = useSwitchChain();
+  const { switchChain, isPending: isSwitching } = useSwitchChain();
   const { deploy, hash, isPending, isConfirming, isSuccess, error } = useDeployToken();
   const { data: issuerTokens } = useIssuerTokens(address);
+
+  const feeConfig = usePlatformFeeConfig();
+  const {
+    payDeploymentFee,
+    hash: feeHash,
+    isPending: isFeePending,
+    isConfirming: isFeeConfirming,
+    isSuccess: isFeeSuccess,
+    error: feeError,
+  } = usePayDeploymentFee();
 
   const [tab, setTab] = useState<StudioTab>("create");
   const [form, setForm] = useState<TokenForm>(defaultForm);
   const [step, setStep] = useState(1);
   const [isUploading, setIsUploading] = useState(false);
   const [feePaid, setFeePaid] = useState(false);
-  const [payMethod, setPayMethod] = useState<"USDC" | "ETH" | "USDT">("USDC");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [kybSubmitted, setKybSubmitted] = useState(false);
 
   const update = (field: keyof TokenForm, value: string) =>
     setForm((p) => ({ ...p, [field]: value }));
+
+  // Real listing fee (if PlatformFeeManager is deployed on the connected
+  // chain) — inert everywhere until you deploy that contract and set its
+  // address, at which point issuers actually pay it on-chain before deploying.
+  const deploymentFeeWei = feeConfig.isDeployed ? ((feeConfig.deploymentFeeWei.data as bigint | undefined) ?? 0n) : 0n;
+  const feeRequired = feeConfig.isDeployed && deploymentFeeWei > 0n;
+  const chainLive = isChainDeployed(chainId);
+  const currentNetwork = DEPLOYMENT_NETWORKS.find((n) => n.id === chainId);
+
+  useEffect(() => {
+    if (isFeeSuccess && !feePaid) setFeePaid(true);
+  }, [isFeeSuccess, feePaid]);
+
+  // Reset the fee-paid flag if the issuer switches chains mid-flow — the fee
+  // (or lack of one) is chain-specific.
+  useEffect(() => {
+    setFeePaid(false);
+  }, [chainId]);
 
   const handleDeploy = async () => {
     if (!address) return;
@@ -385,6 +413,7 @@ export default function StudioPage() {
           maturity_date: form.maturityDate || null,
           yield_bps: Math.round(parseFloat(form.yieldBps || "0") * 100),
           risk_rating: form.riskRating,
+          chain_id: chainId,
         });
       } catch {
         console.warn("Supabase save skipped — configure credentials");
@@ -394,19 +423,27 @@ export default function StudioPage() {
     }
   };
 
+  const handleDeploySubmit = async () => {
+    if (feeRequired && !feePaid) {
+      payDeploymentFee(form.symbol, deploymentFeeWei);
+      return;
+    }
+    await handleDeploy();
+    if (!error) setStep(8);
+  };
+
   // Step gate conditions
   const canStep1 = !!(form.name && form.symbol);
   const canStep2 = isConnected;
   const canStep4 = !!(form.businessName && form.registrationNumber && form.directorName);
   const canStep5 = !!(form.totalValueUSD && form.initialSupply);
-  const canDeploy = canStep1 && isConnected && canStep4 && canStep5 && termsAccepted;
+  const canDeploy = canStep1 && isConnected && canStep4 && canStep5 && termsAccepted && chainLive;
 
   const tokens = (issuerTokens as Array<{
     name: string; symbol: string; assetType: string;
     tokenAddress: string; active: boolean; deployedAt: bigint;
   }>) || [];
 
-  const currentChain = CHAINS.find((c) => c.id === chainId);
   const meta = CLASS_META[form.assetClass];
   const MetaIcon = meta.icon;
 
@@ -424,8 +461,8 @@ export default function StudioPage() {
           {isConnected ? (
             <>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-[11px] font-medium text-neutral-700">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                {currentChain?.short ?? `Chain ${chainId}`}
+                <span className={`h-1.5 w-1.5 rounded-full ${chainLive ? "bg-emerald-500" : "bg-amber-500"}`} />
+                {getChainName(chainId)}
               </span>
               <StatusBadge status={`${tokens.length} deployed`} variant="info" />
             </>
@@ -661,42 +698,69 @@ export default function StudioPage() {
                   </div>
                 </div>
 
-                {/* Chain selector */}
+                {/* Chain selector — live mainnets */}
                 <div>
                   <label className="mb-3 block text-[12px] font-medium text-neutral-800">Select Deployment Network</label>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    {CHAINS.map((chain) => (
+                    {DEPLOYMENT_NETWORKS.map((network) => {
+                      const deployed = isChainDeployed(network.id);
+                      const selected = chainId === network.id;
+                      return (
+                        <button
+                          key={network.id}
+                          onClick={() => switchChain?.({ chainId: network.id })}
+                          className={`flex flex-col items-start gap-1 rounded-xl border p-4 text-left transition-all ${
+                            selected
+                              ? "border-neutral-950 bg-neutral-950 text-white"
+                              : "border-neutral-200 bg-neutral-50 hover:border-neutral-400 hover:bg-white"
+                          }`}
+                        >
+                          <div className="flex w-full items-center justify-between">
+                            <p className={`text-[13px] font-semibold ${selected ? "text-white" : "text-neutral-900"}`}>{network.shortName}</p>
+                            {selected && <CheckCircle2 className="h-4 w-4 text-emerald-400" />}
+                          </div>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                            deployed ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                          } ${selected ? "bg-white/20 text-white/80" : ""}`}>
+                            {deployed ? "Live" : "Not deployed"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <p className="mb-2 mt-4 text-[11px] font-medium text-neutral-500">Testnets & local (for testing)</p>
+                  <div className="flex flex-wrap gap-2">
+                    {TEST_CHAINS.map((chain) => (
                       <button
                         key={chain.id}
                         onClick={() => switchChain?.({ chainId: chain.id })}
-                        className={`flex flex-col items-start gap-1 rounded-xl border p-4 text-left transition-all ${
-                          chainId === chain.id
-                            ? "border-neutral-950 bg-neutral-950 text-white"
-                            : "border-neutral-200 bg-neutral-50 hover:border-neutral-400 hover:bg-white"
+                        className={`rounded-full border px-3.5 py-1.5 text-[11px] font-medium transition-colors ${
+                          chainId === chain.id ? "border-neutral-950 bg-neutral-950 text-white" : "border-neutral-200 bg-neutral-50 text-neutral-600 hover:border-neutral-400"
                         }`}
                       >
-                        <div className="flex w-full items-center justify-between">
-                          <p className={`text-[13px] font-semibold ${chainId === chain.id ? "text-white" : "text-neutral-900"}`}>{chain.short}</p>
-                          {chainId === chain.id && <CheckCircle2 className="h-4 w-4 text-emerald-400" />}
-                        </div>
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                          chain.tag === "Mainnet" ? "bg-emerald-100 text-emerald-700" :
-                          chain.tag === "Testnet" ? "bg-blue-100 text-blue-700" :
-                          "bg-neutral-200 text-neutral-600"
-                        } ${chainId === chain.id ? "bg-white/20 text-white/80" : ""}`}>
-                          {chain.tag}
-                        </span>
+                        {chain.short}
+                        {isChainDeployed(chain.id) && <span className="ml-1.5 text-emerald-400">●</span>}
                       </button>
                     ))}
                   </div>
                 </div>
 
                 {/* Selected chain info */}
-                {currentChain && (
-                  <div className="flex items-center gap-3 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-[12px]">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                    <p className="text-neutral-700">Tokens will be deployed on <span className="font-semibold text-neutral-950">{currentChain.short}</span> ({currentChain.tag}). Smart contracts will be ERC-3643 compliant.</p>
-                  </div>
+                {isConnected && (
+                  chainLive ? (
+                    <div className="flex items-center gap-3 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-[12px]">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                      <p className="text-neutral-700">Tokens will be deployed on <span className="font-semibold text-neutral-950">{getChainName(chainId)}</span>. Smart contracts will be ERC-3643 compliant.</p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] text-amber-900">
+                      <span className="flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 shrink-0" />
+                        Contracts aren't deployed on <span className="font-semibold">{getChainName(chainId)}</span> yet — deployment stays disabled until they go live here.
+                      </span>
+                    </div>
+                  )
                 )}
 
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 space-y-2 text-[12px] text-neutral-600">
@@ -721,17 +785,39 @@ export default function StudioPage() {
               <div className="card p-6 space-y-5">
                 <StepHeader n={3} title="Listing Fee" subtitle="Pay the one-time listing fee to proceed with tokenization." />
 
-                {feePaid ? (
+                {!feeRequired ? (
+                  <div className="flex flex-col items-center gap-4 py-8 text-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+                      <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+                    </div>
+                    <div>
+                      <p className="text-[16px] font-semibold text-neutral-950">No Listing Fee Required</p>
+                      <p className="mt-1 text-[13px] text-neutral-500">
+                        {feeConfig.isDeployed
+                          ? "The platform fee manager on this network currently charges no deployment fee."
+                          : `No platform fee manager is configured on ${getChainName(chainId)} yet — you can continue for free.`}
+                      </p>
+                    </div>
+                  </div>
+                ) : feePaid ? (
                   <div className="flex flex-col items-center gap-4 py-8 text-center">
                     <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
                       <CheckCircle2 className="h-8 w-8 text-emerald-600" />
                     </div>
                     <div>
                       <p className="text-[16px] font-semibold text-neutral-950">Payment Confirmed</p>
-                      <p className="mt-1 text-[13px] text-neutral-500">Your listing fee has been received. Proceed to KYB verification.</p>
+                      <p className="mt-1 text-[13px] text-neutral-500">Your listing fee has been received on-chain. Proceed to KYB verification.</p>
                     </div>
                     <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-6 py-3 text-[12px] text-emerald-800">
-                      Tx confirmed • {payMethod === "ETH" ? "0.01 ETH" : payMethod === "USDC" ? "99 USDC" : "99 USDT"} paid
+                      Tx confirmed • {(Number(deploymentFeeWei) / 1e18).toFixed(6)} {currentNetwork?.nativeCurrency ?? "ETH"} paid
+                      {feeHash && getExplorerTxUrl(chainId, feeHash) && (
+                        <>
+                          {" "}
+                          <a href={getExplorerTxUrl(chainId, feeHash)} target="_blank" rel="noopener noreferrer" className="underline">
+                            View transaction
+                          </a>
+                        </>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -740,7 +826,7 @@ export default function StudioPage() {
                     <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-5 space-y-3">
                       <p className="text-[12px] font-semibold text-neutral-800 uppercase tracking-wide">Fee Breakdown</p>
                       {[
-                        { label: "Token Listing Fee", amount: "$99.00" },
+                        { label: "Token Listing Fee", amount: `${(Number(deploymentFeeWei) / 1e18).toFixed(6)} ${currentNetwork?.nativeCurrency ?? "ETH"}` },
                         { label: "IPFS Document Storage", amount: "$0.00" },
                         { label: "Compliance Registry", amount: "$0.00" },
                         { label: "Smart Contract Deployment", amount: "Gas only" },
@@ -752,37 +838,30 @@ export default function StudioPage() {
                       ))}
                       <div className="border-t border-neutral-200 pt-3 flex items-center justify-between">
                         <span className="text-[14px] font-bold text-neutral-950">Total</span>
-                        <span className="text-[14px] font-bold text-neutral-950">$99.00 + gas</span>
+                        <span className="text-[14px] font-bold text-neutral-950">{(Number(deploymentFeeWei) / 1e18).toFixed(6)} {currentNetwork?.nativeCurrency ?? "ETH"} + gas</span>
                       </div>
                     </div>
 
-                    {/* Payment method */}
-                    <div>
-                      <label className="mb-2 block text-[12px] font-medium text-neutral-800">Payment Method</label>
-                      <div className="flex gap-2">
-                        {(["USDC", "USDT", "ETH"] as const).map((m) => (
-                          <button
-                            key={m}
-                            onClick={() => setPayMethod(m)}
-                            className={`flex flex-1 items-center justify-center gap-2 rounded-xl border py-3 text-[13px] font-medium transition-all ${
-                              payMethod === m
-                                ? "border-neutral-950 bg-neutral-950 text-white"
-                                : "border-neutral-200 bg-neutral-50 text-neutral-700 hover:border-neutral-400"
-                            }`}
-                          >
-                            {m === "ETH" ? "⟠" : "$"} {m}
-                            {m === "ETH" && <span className="text-[10px] opacity-60">≈ 0.01</span>}
-                          </button>
-                        ))}
+                    <p className="text-center text-[11px] text-neutral-500">
+                      Paid in {currentNetwork?.nativeCurrency ?? "the chain's native currency"} directly to the platform's fee manager contract — one on-chain transaction, no card or off-chain processor.
+                    </p>
+
+                    {isFeePending && <TxStatus icon={Loader2} spin text="Waiting for wallet confirmation…" cls="text-amber-700" />}
+                    {isFeeConfirming && <TxStatus icon={Loader2} spin text="Confirming fee payment on-chain…" cls="text-neutral-950" />}
+                    {feeError && (
+                      <div className="flex items-start gap-2 text-[12px] text-red-700">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        {feeError.message.slice(0, 180)}
                       </div>
-                    </div>
+                    )}
 
                     <button
-                      onClick={() => setFeePaid(true)}
-                      className="btn-primary w-full justify-center"
+                      onClick={() => payDeploymentFee(form.symbol, deploymentFeeWei)}
+                      disabled={!isConnected || !chainLive || isFeePending || isFeeConfirming}
+                      className="btn-primary w-full justify-center disabled:opacity-50"
                     >
                       <DollarSign className="h-4 w-4" />
-                      Pay {payMethod === "ETH" ? "0.01 ETH" : `99 ${payMethod}`} — Secure Checkout
+                      Pay {(Number(deploymentFeeWei) / 1e18).toFixed(6)} {currentNetwork?.nativeCurrency ?? "ETH"} — On-Chain
                     </button>
 
                     <p className="text-center text-[11px] text-neutral-500">
@@ -791,7 +870,7 @@ export default function StudioPage() {
                   </>
                 )}
 
-                <NavButtons onBack={() => setStep(2)} onNext={() => setStep(4)} nextDisabled={!feePaid} nextLabel="Continue to KYB" />
+                <NavButtons onBack={() => setStep(2)} onNext={() => setStep(4)} nextDisabled={feeRequired && !feePaid} nextLabel="Continue to KYB" />
               </div>
             )}
 
@@ -1103,6 +1182,19 @@ export default function StudioPage() {
                       ))}
                     </div>
                   </div>
+                )}
+
+                <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 space-y-2 text-[12px] text-neutral-600">
+                  {[
+                    "All transfers enforce on-chain compliance automatically",
+                    "Metadata pinned to IPFS via Pinata",
+                    "Off-chain registry stored in Supabase",
+                  ].map((t) => (
+                    <div key={t} className="flex items-center gap-2">
+                      <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                      {t}
+                    </div>
+                  ))}
                 </div>
 
                 {/* Compliance checklist */}
@@ -1111,7 +1203,8 @@ export default function StudioPage() {
                   <div className="space-y-2">
                     {[
                       { label: "Wallet connected", done: isConnected },
-                      { label: "Listing fee paid", done: feePaid },
+                      { label: "Network live for deployment", done: chainLive },
+                      { label: feeRequired ? "Listing fee paid" : "No listing fee required", done: !feeRequired || feePaid },
                       { label: "KYB details provided", done: canStep4 },
                       { label: "Financials configured", done: canStep5 },
                       { label: "Terms accepted", done: termsAccepted },
@@ -1132,7 +1225,16 @@ export default function StudioPage() {
                 <div>
                   <label className="mb-2 block text-[12px] font-medium text-neutral-800">Deploy on Chain</label>
                   <div className="flex flex-wrap gap-2">
-                    {CHAINS.map((chain) => (
+                    {DEPLOYMENT_NETWORKS.map((network) => (
+                      <button key={network.id} onClick={() => switchChain?.({ chainId: network.id })}
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[11px] font-medium transition-colors ${
+                          chainId === network.id ? "border-neutral-950 bg-neutral-950 text-white" : "border-neutral-200 bg-neutral-50 text-neutral-600 hover:border-neutral-400"
+                        }`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${isChainDeployed(network.id) ? "bg-emerald-400" : "bg-amber-400"}`} />
+                        {network.shortName}
+                      </button>
+                    ))}
+                    {TEST_CHAINS.map((chain) => (
                       <button key={chain.id} onClick={() => switchChain?.({ chainId: chain.id })}
                         className={`rounded-full border px-3.5 py-1.5 text-[11px] font-medium transition-colors ${
                           chainId === chain.id ? "border-neutral-950 bg-neutral-950 text-white" : "border-neutral-200 bg-neutral-50 text-neutral-600 hover:border-neutral-400"
@@ -1162,12 +1264,27 @@ export default function StudioPage() {
                   </div>
                 )}
 
+                {isConnected && !chainLive && (
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-[13px] text-amber-900">Contracts aren't deployed on {getChainName(chainId)} yet — switch to a live network to deploy.</p>
+                    <button
+                      onClick={() => switchChain?.({ chainId: DEPLOYMENT_NETWORKS[0].id })}
+                      className="flex shrink-0 items-center gap-1.5 rounded-md bg-neutral-950 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-neutral-800"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${isSwitching ? "animate-spin" : ""}`} />
+                      Switch
+                    </button>
+                  </div>
+                )}
+
+                {isFeePending && <TxStatus icon={Loader2} spin text="Waiting for listing fee confirmation…" cls="text-amber-700" />}
+                {isFeeConfirming && <TxStatus icon={Loader2} spin text="Confirming listing fee on-chain…" cls="text-neutral-950" />}
                 {isPending && <TxStatus icon={Loader2} spin text="Waiting for wallet confirmation…" cls="text-amber-700" />}
                 {isConfirming && <TxStatus icon={Loader2} spin text="Confirming on-chain…" cls="text-neutral-950" />}
                 {isSuccess && (
                   <div className="flex items-center gap-2 text-[13px] text-emerald-700">
                     <CheckCircle2 className="h-4 w-4" />
-                    Token deployed! {hash && <a href={`https://sepolia.etherscan.io/tx/${hash}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">View on Etherscan <ExternalLink className="h-3 w-3" /></a>}
+                    Token deployed! {hash && getExplorerTxUrl(chainId, hash) && <a href={getExplorerTxUrl(chainId, hash)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">View transaction <ExternalLink className="h-3 w-3" /></a>}
                   </div>
                 )}
                 {error && (
@@ -1180,15 +1297,46 @@ export default function StudioPage() {
                 <div className="flex gap-3">
                   <NavButtons onBack={() => setStep(6)} />
                   <button
-                    onClick={async () => { await handleDeploy(); if (!error) setStep(8); }}
-                    disabled={!canDeploy || isPending || isConfirming || isUploading}
+                    onClick={handleDeploySubmit}
+                    disabled={!canDeploy || isPending || isConfirming || isUploading || isFeePending || isFeeConfirming}
                     className="btn-primary"
                   >
-                    {isUploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading to IPFS…</> :
+                    {isFeePending || isFeeConfirming ? <><Loader2 className="h-4 w-4 animate-spin" /> Paying listing fee…</> :
+                      isUploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading to IPFS…</> :
                       isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> Deploying…</> :
+                      feeRequired && !feePaid ? <><DollarSign className="h-4 w-4" /> Pay Listing Fee</> :
                       <><Coins className="h-4 w-4" /> Deploy & Submit for Approval</>}
                   </button>
                 </div>
+
+                {/* Implied token price */}
+                {form.totalValueUSD && form.initialSupply && (
+                  <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400 mb-2">Computed Tokenomics</p>
+                    <div className="grid grid-cols-3 gap-4 text-[12px]">
+                      <div>
+                        <p className="text-neutral-500">Token Price</p>
+                        <p className="font-semibold text-neutral-950 text-[15px]">
+                          ${(parseFloat(form.totalValueUSD) / parseFloat(form.initialSupply)).toFixed(4)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-neutral-500">Market Cap</p>
+                        <p className="font-semibold text-neutral-950 text-[15px]">
+                          ${Number(form.totalValueUSD).toLocaleString()}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-neutral-500">Est. Annual Yield</p>
+                        <p className="font-semibold text-emerald-700 text-[15px]">
+                          {form.yieldBps || "0"}% APY
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <NavButtons onBack={() => setStep(4)} onNext={() => setStep(6)} nextDisabled={!canStep5} nextLabel="Continue to Documents" />
               </div>
             )}
 
@@ -1210,10 +1358,10 @@ export default function StudioPage() {
                     <p className="mt-1 text-[13px] text-neutral-500 font-mono">{form.symbol || "TOKEN"}</p>
                     <p className="mt-3 text-[13px] text-neutral-600 max-w-sm">Your asset is now under review by our compliance team. You'll receive a notification once it's approved and listed on the marketplace.</p>
                   </div>
-                  {hash && (
-                    <a href={`https://sepolia.etherscan.io/tx/${hash}`} target="_blank" rel="noopener noreferrer"
+                  {hash && getExplorerTxUrl(chainId, hash) && (
+                    <a href={getExplorerTxUrl(chainId, hash)} target="_blank" rel="noopener noreferrer"
                       className="inline-flex items-center gap-2 rounded-full border border-neutral-200 px-4 py-2 text-[12px] font-medium text-neutral-700 hover:border-neutral-950 transition-colors">
-                      <ExternalLink className="h-3.5 w-3.5" /> View Transaction on Etherscan
+                      <ExternalLink className="h-3.5 w-3.5" /> View Transaction on {currentNetwork?.shortName ?? "Explorer"}
                     </a>
                   )}
                 </div>
@@ -1311,8 +1459,8 @@ export default function StudioPage() {
                 {step === 2 && [
                   "Sepolia / Amoy are testnets — free to deploy and test",
                   "Ethereum Mainnet has higher gas fees but maximum security",
-                  "Base offers low fees with Ethereum-level security",
-                  "You can always bridge tokens to other chains later",
+                  "Base, Polygon, and BNB Chain offer lower fees",
+                  "Only chains marked \"Live\" have contracts deployed today",
                 ].map((f) => (
                   <div key={f} className="flex items-start gap-2">
                     <Lightbulb className="h-3 w-3 mt-0.5 shrink-0 text-amber-500" />
@@ -1320,8 +1468,8 @@ export default function StudioPage() {
                   </div>
                 ))}
                 {step === 3 && [
-                  "One-time fee covers compliance registry setup",
-                  "USDC payment is non-refundable once confirmed",
+                  feeRequired ? "One-time fee covers compliance registry setup" : "No listing fee is configured on this network",
+                  "Paid directly on-chain — no card or off-chain processor",
                   "Fee includes IPFS document pinning (indefinite)",
                   "Gas fees for deployment are separate",
                 ].map((f) => (
@@ -1378,7 +1526,7 @@ export default function StudioPage() {
                   { label: form.name || "Token name", done: !!form.name },
                   { label: form.symbol || "Symbol", done: !!form.symbol },
                   { label: isConnected ? "Wallet connected" : "Wallet needed", done: isConnected },
-                  { label: feePaid ? "Listing fee paid" : "Listing fee", done: feePaid },
+                  { label: feeRequired ? (feePaid ? "Listing fee paid" : "Listing fee") : "No fee required", done: !feeRequired || feePaid },
                   { label: canStep4 ? "KYB complete" : "KYB needed", done: canStep4 },
                   { label: canStep5 ? "Financials set" : "Financials needed", done: canStep5 },
                   { label: termsAccepted ? "Terms accepted" : "Terms needed", done: termsAccepted },

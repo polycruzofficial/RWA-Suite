@@ -1,27 +1,38 @@
 "use client";
 
-import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useChainId, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { parseEther, formatEther, type Address } from "viem";
-import { CONTRACT_ADDRESSES } from "@/config/contracts";
+import { getContractsForChain, ZERO_ADDRESS } from "@/config/contracts";
 import RWATokenFactoryABI from "@/config/abis/RWATokenFactory.json";
 import RWATokenABI from "@/config/abis/RWAToken.json";
 import ComplianceRegistryABI from "@/config/abis/ComplianceRegistry.json";
 import TreasuryVaultABI from "@/config/abis/TreasuryVault.json";
 import YieldDistributorABI from "@/config/abis/YieldDistributor.json";
+import PlatformFeeManagerABI from "@/config/abis/PlatformFeeManager.json";
+
+// Resolves contract addresses for whichever chain the connected wallet is
+// currently on, so every hook below follows the active network rather than
+// a single hardcoded deployment.
+export function useContractAddresses() {
+  const chainId = useChainId();
+  return getContractsForChain(chainId);
+}
 
 // ── Factory Hooks ──
 
 export function useTokenCount() {
+  const { factory } = useContractAddresses();
   return useReadContract({
-    address: CONTRACT_ADDRESSES.factory,
+    address: factory,
     abi: RWATokenFactoryABI,
     functionName: "getTokenCount",
   });
 }
 
 export function useIssuerTokens(issuer: Address | undefined) {
+  const { factory } = useContractAddresses();
   return useReadContract({
-    address: CONTRACT_ADDRESSES.factory,
+    address: factory,
     abi: RWATokenFactoryABI,
     functionName: "getTokensByIssuer",
     args: issuer ? [issuer] : undefined,
@@ -30,6 +41,7 @@ export function useIssuerTokens(issuer: Address | undefined) {
 }
 
 export function useDeployToken() {
+  const { factory } = useContractAddresses();
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
@@ -45,7 +57,7 @@ export function useDeployToken() {
     initialSupply: bigint;
   }) => {
     writeContract({
-      address: CONTRACT_ADDRESSES.factory,
+      address: factory,
       abi: RWATokenFactoryABI,
       functionName: "deployToken",
       args: [
@@ -144,8 +156,9 @@ export function useDeclareDividend() {
 // ── Compliance Hooks ──
 
 export function useIdentity(account: Address | undefined) {
+  const { compliance } = useContractAddresses();
   return useReadContract({
-    address: CONTRACT_ADDRESSES.compliance,
+    address: compliance,
     abi: ComplianceRegistryABI,
     functionName: "identities",
     args: account ? [account] : undefined,
@@ -154,8 +167,9 @@ export function useIdentity(account: Address | undefined) {
 }
 
 export function useIsCompliant(account: Address | undefined) {
+  const { compliance } = useContractAddresses();
   return useReadContract({
-    address: CONTRACT_ADDRESSES.compliance,
+    address: compliance,
     abi: ComplianceRegistryABI,
     functionName: "isCompliant",
     args: account ? [account] : undefined,
@@ -164,6 +178,7 @@ export function useIsCompliant(account: Address | undefined) {
 }
 
 export function useSetIdentity() {
+  const { compliance } = useContractAddresses();
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
@@ -178,7 +193,7 @@ export function useSetIdentity() {
     riskScore: bigint;
   }) => {
     writeContract({
-      address: CONTRACT_ADDRESSES.compliance,
+      address: compliance,
       abi: ComplianceRegistryABI,
       functionName: "setIdentity",
       args: [
@@ -198,8 +213,9 @@ export function useSetIdentity() {
 }
 
 export function useAuditLog(offset: number, limit: number) {
+  const { compliance } = useContractAddresses();
   return useReadContract({
-    address: CONTRACT_ADDRESSES.compliance,
+    address: compliance,
     abi: ComplianceRegistryABI,
     functionName: "getAuditEntries",
     args: [BigInt(offset), BigInt(limit)],
@@ -209,30 +225,34 @@ export function useAuditLog(offset: number, limit: number) {
 // ── Treasury Hooks ──
 
 export function useTreasuryNAV() {
+  const { treasury } = useContractAddresses();
   return useReadContract({
-    address: CONTRACT_ADDRESSES.treasury,
+    address: treasury,
     abi: TreasuryVaultABI,
     functionName: "totalTreasuryValueUSD",
   });
 }
 
 export function useTreasuryBalance() {
+  const { treasury } = useContractAddresses();
   return useReadContract({
-    address: CONTRACT_ADDRESSES.treasury,
+    address: treasury,
     abi: TreasuryVaultABI,
     functionName: "getNativeBalance",
   });
 }
 
 export function useYieldProductCount() {
+  const { treasury } = useContractAddresses();
   return useReadContract({
-    address: CONTRACT_ADDRESSES.treasury,
+    address: treasury,
     abi: TreasuryVaultABI,
     functionName: "getYieldProductCount",
   });
 }
 
 export function useAddYieldProduct() {
+  const { treasury } = useContractAddresses();
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
@@ -244,7 +264,7 @@ export function useAddYieldProduct() {
     maturityDate: bigint;
   }) => {
     writeContract({
-      address: CONTRACT_ADDRESSES.treasury,
+      address: treasury,
       abi: TreasuryVaultABI,
       functionName: "addYieldProduct",
       args: [params.name, params.apyBps, params.riskLevel, params.provider, params.maturityDate],
@@ -257,14 +277,16 @@ export function useAddYieldProduct() {
 // ── Yield Distributor Hooks ──
 
 export function useYieldStrategies() {
+  const { yield: yieldAddress } = useContractAddresses();
   return useReadContract({
-    address: CONTRACT_ADDRESSES.yield,
+    address: yieldAddress,
     abi: YieldDistributorABI,
     functionName: "getStrategyCount",
   });
 }
 
 export function useCreateStrategy() {
+  const { yield: yieldAddress } = useContractAddresses();
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
@@ -277,7 +299,7 @@ export function useCreateStrategy() {
     lockDuration: bigint;
   }) => {
     writeContract({
-      address: CONTRACT_ADDRESSES.yield,
+      address: yieldAddress,
       abi: YieldDistributorABI,
       functionName: "createStrategy",
       args: [
@@ -292,6 +314,68 @@ export function useCreateStrategy() {
   };
 
   return { create, hash, isPending, isConfirming, isSuccess, error };
+}
+
+// ── Platform Fee Manager Hooks ──
+// No-ops until a PlatformFeeManager is actually deployed on the connected
+// chain (feeManager address is the zero address by default) — callers should
+// check `isDeployed` before relying on the read values or invoking writes.
+
+export function usePlatformFeeConfig() {
+  const { feeManager } = useContractAddresses();
+  const isDeployed = feeManager !== ZERO_ADDRESS;
+
+  const deploymentFeeWei = useReadContract({
+    address: feeManager,
+    abi: PlatformFeeManagerABI,
+    functionName: "deploymentFeeWei",
+    query: { enabled: isDeployed },
+  });
+
+  const buyFeeBps = useReadContract({
+    address: feeManager,
+    abi: PlatformFeeManagerABI,
+    functionName: "buyFeeBps",
+    query: { enabled: isDeployed },
+  });
+
+  return { feeManager, isDeployed, deploymentFeeWei, buyFeeBps };
+}
+
+export function usePayDeploymentFee() {
+  const { feeManager } = useContractAddresses();
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const payDeploymentFee = (symbol: string, feeWei: bigint) => {
+    writeContract({
+      address: feeManager,
+      abi: PlatformFeeManagerABI,
+      functionName: "payDeploymentFee",
+      args: [symbol],
+      value: feeWei,
+    });
+  };
+
+  return { payDeploymentFee, hash, isPending, isConfirming, isSuccess, error };
+}
+
+export function useCollectBuyFee() {
+  const { feeManager } = useContractAddresses();
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const collectBuyFee = (asset: Address, settleTo: Address, amountWei: bigint) => {
+    writeContract({
+      address: feeManager,
+      abi: PlatformFeeManagerABI,
+      functionName: "collectBuyFee",
+      args: [asset, settleTo],
+      value: amountWei,
+    });
+  };
+
+  return { collectBuyFee, hash, isPending, isConfirming, isSuccess, error };
 }
 
 export { parseEther, formatEther };
