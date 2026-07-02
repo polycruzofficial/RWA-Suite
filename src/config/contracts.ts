@@ -1,4 +1,4 @@
-import { mainnet, polygon, base, bsc, avalanche, sepolia, polygonAmoy, hardhat } from "wagmi/chains";
+import { mainnet, polygon, base, bsc, avalanche, arbitrum, sepolia, polygonAmoy, hardhat } from "wagmi/chains";
 
 type Address = `0x${string}`;
 
@@ -36,6 +36,7 @@ export const CONTRACTS_BY_CHAIN: Record<number, ChainContracts> = {
   [base.id]: chainContracts("BASE"),
   [bsc.id]: chainContracts("BNB"),
   [avalanche.id]: chainContracts("AVALANCHE"),
+  [arbitrum.id]: chainContracts("ARBITRUM"),
   [sepolia.id]: chainContracts(""), // currently-deployed testnet uses the unsuffixed env vars
   [polygonAmoy.id]: chainContracts("AMOY"),
   [hardhat.id]: chainContracts("LOCAL"),

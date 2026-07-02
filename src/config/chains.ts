@@ -1,4 +1,4 @@
-import { mainnet, polygon, base, bsc, avalanche, sepolia, polygonAmoy, hardhat } from "wagmi/chains";
+import { mainnet, polygon, base, bsc, avalanche, arbitrum, sepolia, polygonAmoy, hardhat } from "wagmi/chains";
 
 export interface DeploymentNetwork {
   id: number;
@@ -44,6 +44,14 @@ export const DEPLOYMENT_NETWORKS: DeploymentNetwork[] = [
     color: "#F0B90B",
   },
   {
+    id: arbitrum.id,
+    name: "Arbitrum One",
+    shortName: "Arbitrum",
+    nativeCurrency: "ETH",
+    explorer: "https://arbiscan.io",
+    color: "#28A0F0",
+  },
+  {
     id: avalanche.id,
     name: "Avalanche Mainnet",
     shortName: "Avalanche",
@@ -73,6 +81,7 @@ const EXPLORERS_BY_CHAIN: Record<number, string> = {
   [polygon.id]: "https://polygonscan.com",
   [base.id]: "https://basescan.org",
   [bsc.id]: "https://bscscan.com",
+  [arbitrum.id]: "https://arbiscan.io",
   [avalanche.id]: "https://snowtrace.io",
   [sepolia.id]: "https://sepolia.etherscan.io",
   [polygonAmoy.id]: "https://amoy.polygonscan.com",

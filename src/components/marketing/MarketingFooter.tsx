@@ -81,11 +81,11 @@ export default function MarketingFooter() {
         </div>
 
         <div className="mt-16 flex flex-col justify-between gap-4 border-t border-neutral-200 pt-8 text-[12px] text-neutral-500 md:flex-row">
-          <p>© 2026 POLYCRUZ Technologies Ltd. All rights reserved.</p>
-          <p>
+          <p>© 2026 POLYCRUZ. All rights reserved.</p>
+          {/* <p>
             Authorised and regulated entity. MiFID II • FCA • MAS • SEC-friendly
             architecture.
-          </p>
+          </p> */}
         </div>
       </div>
     </footer>

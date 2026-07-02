@@ -19,6 +19,9 @@ import {
   Loader2,
   CheckCircle2,
   AlertTriangle,
+  Zap,
+  RefreshCw,
+  Clock,
 } from "lucide-react";
 import {
   AreaChart,
@@ -59,9 +62,27 @@ const collateralPositions = [
   { asset: "EQFA", locked: "10,000 tokens", collateralRatio: "110%", borrowCapacity: "£11,200", status: "warning" },
 ];
 
+const stablecoins = [
+  { symbol: "USDC", name: "USD Coin", balance: "1,842,000", network: "Ethereum", flag: "🇺🇸" },
+  { symbol: "USDT", name: "Tether USD", balance: "920,500", network: "Ethereum", flag: "🇺🇸" },
+  { symbol: "PYUSD", name: "PayPal USD", balance: "340,000", network: "Ethereum", flag: "🇺🇸" },
+  { symbol: "EURC", name: "Euro Coin", balance: "618,200", network: "Ethereum", flag: "🇪🇺" },
+  { symbol: "GBPT", name: "GBP Token", balance: "275,800", network: "Ethereum", flag: "🇬🇧" },
+];
+
+const recentSettlements = [
+  { id: "TXN-0041", from: "0x5678...efgh", asset: "GILT26", amount: "12,500", stablecoin: "USDC", usdValue: "12,750", time: "2 min ago", status: "settled" },
+  { id: "TXN-0040", from: "0x9abc...ijkl", asset: "CREDIT1", amount: "5,000", stablecoin: "USDT", usdValue: "4,900", time: "18 min ago", status: "settled" },
+  { id: "TXN-0039", from: "0xdef0...mnop", asset: "EQFA", amount: "2,000", stablecoin: "EURC", usdValue: "2,530", time: "45 min ago", status: "settled" },
+  { id: "TXN-0038", from: "0x1234...abcd", asset: "GILT26", amount: "8,000", stablecoin: "GBPT", usdValue: "8,160", time: "1 hr ago", status: "settled" },
+];
+
 export default function LiquidityPage() {
   const { address, isConnected } = useAccount();
-  const [activeTab, setActiveTab] = useState<"pools" | "p2p" | "lending">("pools");
+  const [activeTab, setActiveTab] = useState<"pools" | "p2p" | "lending" | "settlement">("pools");
+  const [swapFrom, setSwapFrom] = useState("GILT26");
+  const [swapTo, setSwapTo] = useState("USDC");
+  const [swapAmount, setSwapAmount] = useState("");
 
   const [myAssets, setMyAssets] = useState<DBAsset[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(false);
@@ -163,16 +184,17 @@ export default function LiquidityPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-neutral-200">
+      <div className="flex gap-2 border-b border-neutral-200 overflow-x-auto">
         {[
           { key: "pools", label: "Liquidity Pools" },
           { key: "p2p", label: "P2P Orderbook" },
           { key: "lending", label: "Collateral & Lending" },
+          { key: "settlement", label: "Stablecoin Settlement" },
         ].map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key as typeof activeTab)}
-            className={`border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+            className={`whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
               activeTab === tab.key ? "border-neutral-950 text-neutral-950" : "border-transparent text-neutral-600 hover:text-neutral-900"
             }`}
           >
@@ -271,6 +293,139 @@ export default function LiquidityPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Settlement */}
+      {activeTab === "settlement" && (
+        <div className="space-y-6">
+          {/* T+0 Banner */}
+          <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+            <Zap className="h-5 w-5 text-emerald-700" />
+            <div>
+              <p className="text-sm font-semibold text-emerald-900">T+0 Settlement Active</p>
+              <p className="text-xs text-emerald-700">All stablecoin settlements execute atomically on-chain with instant finality. No counterparty risk.</p>
+            </div>
+            <div className="ml-auto flex items-center gap-2 text-xs font-medium text-emerald-700">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              Live
+            </div>
+          </div>
+
+          {/* Stablecoin Balances */}
+          <div className="rounded-xl border border-neutral-200 bg-white p-5">
+            <h3 className="mb-4 text-sm font-semibold text-neutral-950">Settlement Asset Balances</h3>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {stablecoins.map((coin) => (
+                <div key={coin.symbol} className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">{coin.flag}</span>
+                    <div>
+                      <p className="text-sm font-bold text-neutral-950">{coin.symbol}</p>
+                      <p className="text-[11px] text-neutral-500">{coin.name}</p>
+                    </div>
+                  </div>
+                  <p className="text-base font-semibold text-neutral-900">{coin.balance}</p>
+                  <p className="text-[11px] text-neutral-500">{coin.network}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Atomic Swap */}
+          <div className="rounded-xl border border-neutral-200 bg-white p-5">
+            <h3 className="mb-4 text-sm font-semibold text-neutral-950">Atomic Swap</h3>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3 items-end">
+              <div>
+                <label className="mb-1.5 block text-xs text-neutral-600">From Token</label>
+                <select
+                  value={swapFrom}
+                  onChange={(e) => setSwapFrom(e.target.value)}
+                  className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm text-neutral-950 focus:border-neutral-950 focus:outline-none"
+                >
+                  {["GILT26", "CREDIT1", "EQFA", "GOLD", "REIT-LON", "EURB27"].map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs text-neutral-600">Receive Stablecoin</label>
+                <select
+                  value={swapTo}
+                  onChange={(e) => setSwapTo(e.target.value)}
+                  className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm text-neutral-950 focus:border-neutral-950 focus:outline-none"
+                >
+                  {["USDC", "USDT", "PYUSD", "EURC", "GBPT"].map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs text-neutral-600">Amount (tokens)</label>
+                <input
+                  type="number"
+                  value={swapAmount}
+                  onChange={(e) => setSwapAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm text-neutral-950 placeholder-neutral-400 focus:border-neutral-950 focus:outline-none"
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex items-center justify-between rounded-lg bg-neutral-50 border border-neutral-200 px-4 py-3">
+              <div className="text-xs text-neutral-600 space-y-1">
+                <p>Rate: 1 {swapFrom} ≈ 1.02 {swapTo}</p>
+                <p>Estimated output: <span className="font-medium text-neutral-900">{swapAmount ? (parseFloat(swapAmount) * 1.02).toFixed(2) : "0.00"} {swapTo}</span></p>
+                <p>Settlement: <span className="text-emerald-700 font-medium">T+0 (instant)</span></p>
+              </div>
+              <button className="rounded-lg bg-neutral-950 px-5 py-2.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50" disabled={!swapAmount}>
+                Execute Swap
+              </button>
+            </div>
+          </div>
+
+          {/* Recent Settlements */}
+          <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-200">
+              <h3 className="text-sm font-semibold text-neutral-950">Recent Settlements</h3>
+              <div className="flex items-center gap-2 text-xs text-neutral-500">
+                <RefreshCw className="h-3 w-3" /> Auto-refreshing
+              </div>
+            </div>
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-neutral-200 bg-neutral-50">
+                  <th className="px-5 py-3 text-left text-xs font-medium text-neutral-600">Tx ID</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-neutral-600">From</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-neutral-600">Asset</th>
+                  <th className="px-5 py-3 text-right text-xs font-medium text-neutral-600">Tokens</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-neutral-600">Stablecoin</th>
+                  <th className="px-5 py-3 text-right text-xs font-medium text-neutral-600">USD Value</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-neutral-600">Time</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-neutral-600">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-200">
+                {recentSettlements.map((s) => (
+                  <tr key={s.id} className="hover:bg-neutral-50">
+                    <td className="px-5 py-3 text-xs font-mono text-neutral-700">{s.id}</td>
+                    <td className="px-5 py-3 text-xs font-mono text-neutral-700">{s.from}</td>
+                    <td className="px-5 py-3 text-sm font-medium text-neutral-900">{s.asset}</td>
+                    <td className="px-5 py-3 text-right text-sm text-neutral-800">{s.amount}</td>
+                    <td className="px-5 py-3">
+                      <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700">{s.stablecoin}</span>
+                    </td>
+                    <td className="px-5 py-3 text-right text-sm font-medium text-neutral-900">${s.usdValue}</td>
+                    <td className="px-5 py-3 text-xs text-neutral-500">{s.time}</td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-700">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Settled
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
